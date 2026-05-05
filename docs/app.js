@@ -129,7 +129,12 @@ function fillVersionSelect(versions) {
 }
 
 async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 7) {
-  for (let offset = 0; offset <= lookbackDays; offset += 1) {
+  const pattern = /\d{8}T\d{4}Z_\w+_(DKE|DKW)_SSH_\d+\.zip$/;
+  let allMatches = [];
+  let latestDateLabel = null;
+
+  // Search current and previous date for full 24-hour coverage
+  for (let offset = 0; offset <= 1 && offset <= lookbackDays; offset += 1) {
     const date = new Date();
     date.setUTCDate(date.getUTCDate() - offset);
     const { y, m, d } = toYmd(date, true);
@@ -139,28 +144,33 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 7) {
       const monthDir = await yearDir.getDirectoryHandle(m);
       const dayDir = await monthDir.getDirectoryHandle(d);
 
-      const matches = [];
-      const pattern = /\d{8}T\d{4}Z_\w+_(DKE|DKW)_SSH_\d+\.zip$/;
-
+      const dateMatches = [];
       for await (const entry of dayDir.values()) {
         if (entry.kind === "file" && pattern.test(entry.name) && entry.name.includes("_2D_")) {
-          matches.push(entry);
+          dateMatches.push(entry);
         }
       }
 
-      if (matches.length > 0) {
-        return {
-          handle: dayDir,
-          dateLabel: `${y}-${m}-${d}`,
-          files: matches,
-        };
+      if (dateMatches.length > 0) {
+        allMatches = allMatches.concat(dateMatches);
+        if (!latestDateLabel) {
+          latestDateLabel = `${y}-${m}-${d}`;
+        }
       }
     } catch {
       // Missing date directory is normal during lookback.
     }
   }
 
-  throw new Error("No 2D IGM files found in the OFFLINE root within lookback range.");
+  if (allMatches.length === 0) {
+    throw new Error("No 2D IGM files found in the OFFLINE root within lookback range.");
+  }
+
+  return {
+    handle: null,
+    dateLabel: latestDateLabel,
+    files: allMatches,
+  };
 }
 
 async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 7) {
