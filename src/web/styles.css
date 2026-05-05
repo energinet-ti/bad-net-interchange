@@ -1,0 +1,183 @@
+:root {
+  --bg: #0f1113;
+  --bg-soft: #171a1e;
+  --surface: #1f2428;
+  --line: rgba(255, 255, 255, 0.12);
+  --text: #e8ecef;
+  --text-soft: #a4adb5;
+  --teal: #20a89a;
+  --teal-bright: #36c5b5;
+  --warn: #e3a82b;
+  --bad: #d8584c;
+  --good: #5cb86b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", "Segoe UI", sans-serif;
+  background: radial-gradient(circle at top right, #1d312f 0%, var(--bg) 52%);
+  color: var(--text);
+}
+
+.app-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 22px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.brand p {
+  margin: 4px 0 0;
+  color: var(--text-soft);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.btn-primary {
+  background: linear-gradient(120deg, var(--teal) 0%, var(--teal-bright) 100%);
+  color: #062421;
+  border: none;
+  font-weight: 700;
+}
+
+.card {
+  background: color-mix(in srgb, var(--surface) 90%, black 10%);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.copy-card {
+  margin-bottom: 14px;
+}
+
+.copy-box {
+  width: 100%;
+  min-height: 92px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #111418;
+  color: var(--text);
+  padding: 10px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+select {
+  background: #15191d;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.small {
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+.mono {
+  font-family: "JetBrains Mono", Consolas, monospace;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  margin-top: 10px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  padding: 8px;
+  font-size: 0.92rem;
+}
+
+.status-normal {
+  color: var(--good);
+}
+
+.status-warning {
+  color: var(--warn);
+}
+
+.status-error {
+  color: var(--bad);
+}
+
+.settings-dialog {
+  width: min(580px, 92vw);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #13181c;
+  color: var(--text);
+}
+
+.settings-actions {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+@media (max-width: 800px) {
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+}

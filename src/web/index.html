@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CGMA vs IGM Comparator</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <h1>CGMA vs IGM Comparator</h1>
+          <p>Rust + WASM static app for latest 2D scenario checks</p>
+        </div>
+        <div class="actions">
+          <button id="settingsButton" class="btn btn-secondary">Settings</button>
+          <button id="runButton" class="btn btn-primary">Run Comparison</button>
+        </div>
+      </header>
+
+      <section class="status-grid">
+        <article class="card">
+          <h2>Configured Folders</h2>
+          <div id="folderStatus" class="mono small">No folders selected yet.</div>
+        </article>
+        <article class="card">
+          <h2>Selection</h2>
+          <div class="field-row">
+            <label for="versionSelect">IGM version:</label>
+            <select id="versionSelect"></select>
+          </div>
+          <div id="selectionInfo" class="small"></div>
+        </article>
+      </section>
+
+      <section class="card copy-card">
+        <h2>Required Folder Access</h2>
+        <p>Use the Settings button and grant read access to both root folders below:</p>
+        <textarea readonly class="copy-box">\\fs61\driftdata\Drift\Arkiv\CGMES\OFFLINE\
+\\fs61\BizTalkFileShare\BTS2010\Common\Tracking\CGMA_TSO\</textarea>
+      </section>
+
+      <section class="card">
+        <h2>Comparison Output</h2>
+        <div id="resultSummary" class="small">No comparison run yet.</div>
+        <div class="table-wrap">
+          <table id="resultTable">
+            <thead>
+              <tr>
+                <th>Time (UTC)</th>
+                <th>Area</th>
+                <th>Version</th>
+                <th>IGM MW</th>
+                <th>CGMA MW</th>
+                <th>Diff MW</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="resultBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="settingsDialog" class="settings-dialog">
+      <h2>Folder Permissions</h2>
+      <p>Grant read access to both source roots. The app will scan date subfolders automatically.</p>
+      <div class="settings-actions">
+        <button id="grantOfflineButton" class="btn btn-secondary">Grant OFFLINE Root</button>
+        <button id="grantCgmaButton" class="btn btn-secondary">Grant CGMA Root</button>
+      </div>
+      <p class="small">
+        OFFLINE root expected: \\fs61\driftdata\Drift\Arkiv\CGMES\OFFLINE\
+        <br />
+        CGMA root expected: \\fs61\BizTalkFileShare\BTS2010\Common\Tracking\CGMA_TSO\
+      </p>
+      <div class="dialog-footer">
+        <button id="closeSettingsButton" class="btn btn-primary">Close</button>
+      </div>
+    </dialog>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

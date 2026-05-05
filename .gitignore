@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Python cache artifacts
+__pycache__/
+*.py[cod]
+
+# Local sample datasets
+sample-data/
+
+# Rust and wasm build artifacts
+target/
+**/target/
+*.rlib
+*.rmeta
+
+# Cargo lockfiles for library crates in this workspace
+src/rust-wasm/Cargo.lock
+
+# Generated frontend build output from reference app
+cgma-igm-comparison-ui-app/frontend/build/

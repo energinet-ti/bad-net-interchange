@@ -1,0 +1,7 @@
+fastapi==0.115.*
+uvicorn[standard]==0.34.*
+rdflib==7.*
+requests==2.*
+python-dotenv==1.*
+pytest==8.*
+httpx==0.28.*

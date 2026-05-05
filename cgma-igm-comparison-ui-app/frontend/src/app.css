@@ -1,0 +1,129 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import 'tailwindcss';
+
+@theme {
+	--font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+	--font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+	/* Energinet brand-inspired teal */
+	--color-teal: #20a89a;
+	--color-teal-bright: #36c5b5;
+	--color-teal-deep: #0f6b62;
+
+	/* Threshold semantics */
+	--color-warn: #e3a82b;
+	--color-bad: #d8584c;
+	--color-good: #5cb86b;
+}
+
+/* Runtime CSS custom properties (consumed via var() and getComputedStyle).
+   Mirrors @theme tokens above where values overlap; @theme tokens drive
+   Tailwind utility generation, these drive runtime theme swapping via
+   the `light` class on <html>. Keep values in sync if updated. */
+:root {
+	/* Surfaces */
+	--bg: #0f1113;
+	--bg-1: #15181b;
+	--bg-2: #1c2024;
+	--line: rgba(255, 255, 255, 0.08);
+	--line-2: rgba(255, 255, 255, 0.14);
+
+	/* Text */
+	--fg: #e8ecef;
+	--fg-2: #a4adb5;
+	--fg-3: #6f7780;
+
+	/* Series */
+	--igm: #e8ecef;
+	--cgma: #36c5b5;
+	--diff: #a4cf6f;
+
+	/* Status */
+	--warn: #e3a82b;
+	--warn-bg: rgba(227, 168, 43, 0.12);
+	--bad: #d8584c;
+	--bad-bg: rgba(216, 88, 76, 0.14);
+	--good: #5cb86b;
+
+	/* Brand */
+	--teal: #20a89a;
+	--teal-bright: #36c5b5;
+	--teal-deep: #0f6b62;
+}
+
+:root.light {
+	/* Surfaces */
+	--bg: #f6f5f1;
+	--bg-1: #ffffff;
+	--bg-2: #fafaf7;
+	--line: rgba(0, 0, 0, 0.08);
+	--line-2: rgba(0, 0, 0, 0.14);
+
+	/* Text */
+	--fg: #15181b;
+	--fg-2: #525a62;
+	--fg-3: #8a939b;
+
+	/* Series */
+	--igm: #15181b;
+	--cgma: #167a70;
+	--diff: #6b9a3f;
+
+	/* Status */
+	--warn-bg: rgba(227, 168, 43, 0.16);
+	--bad-bg: rgba(216, 88, 76, 0.14);
+	--good: #3a8a4a;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	min-height: 100dvh;
+	background: var(--bg);
+	color: var(--fg);
+	font-family: var(--font-sans);
+	font-size: 14px;
+	letter-spacing: -0.005em;
+	-webkit-font-smoothing: antialiased;
+	transition: background 0.25s ease, color 0.25s ease;
+}
+
+::selection {
+	background: var(--teal);
+	color: #062421;
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.45;
+	}
+}
+
+/* Visually-hidden but accessible to screen readers and search. */
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
