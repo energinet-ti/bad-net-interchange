@@ -156,23 +156,41 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 7) {
   let allMatches = [];
   let latestDateLabel = null;
 
+  debugLog.log(`[IGM Discovery] Searching OFFLINE root for 2D scenarios with lookback=${lookbackDays} days`, 'info');
+
   // Search current and previous date for full 24-hour coverage
   for (let offset = 0; offset <= 1 && offset <= lookbackDays; offset += 1) {
     const date = new Date();
     date.setUTCDate(date.getUTCDate() - offset);
     const { y, m, d } = toYmd(date, true);
 
+    const pathLabel = `${y}/${m}/${d}`;
+    debugLog.log(`[IGM Discovery] Checking date path: ${pathLabel}`, 'info');
+
     try {
       const yearDir = await offlineRootHandle.getDirectoryHandle(y);
+      debugLog.log(`[IGM Discovery] ✓ Year dir exists: ${y}`, 'info');
+      
       const monthDir = await yearDir.getDirectoryHandle(m);
+      debugLog.log(`[IGM Discovery] ✓ Month dir exists: ${y}/${m}`, 'info');
+      
       const dayDir = await monthDir.getDirectoryHandle(d);
+      debugLog.log(`[IGM Discovery] ✓ Day dir exists: ${pathLabel}`, 'info');
 
       const dateMatches = [];
+      const allEntriesInDay = [];
       for await (const entry of dayDir.values()) {
+        allEntriesInDay.push(entry.name);
         if (entry.kind === "file" && pattern.test(entry.name) && entry.name.includes("_2D_")) {
           dateMatches.push(entry);
         }
       }
+
+      debugLog.log(`[IGM Discovery] Files in ${pathLabel}: ${allEntriesInDay.length} total`, 'info');
+      if (allEntriesInDay.length > 0) {
+        debugLog.log(`[IGM Discovery]   Sample files: ${allEntriesInDay.slice(0, 3).join(', ')}${allEntriesInDay.length > 3 ? '...' : ''}`, 'info');
+      }
+      debugLog.log(`[IGM Discovery] 2D SSH matches found: ${dateMatches.length}`, 'info');
 
       if (dateMatches.length > 0) {
         allMatches = allMatches.concat(dateMatches);
@@ -180,14 +198,18 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 7) {
           latestDateLabel = `${y}-${m}-${d}`;
         }
       }
-    } catch {
-      // Missing date directory is normal during lookback.
+    } catch (err) {
+      debugLog.log(`[IGM Discovery] ✗ Path not found: ${pathLabel} (${err.message})`, 'warn');
     }
   }
 
   if (allMatches.length === 0) {
-    throw new Error("No 2D IGM files found in the OFFLINE root within lookback range.");
+    const errorMsg = `No 2D IGM files found in the OFFLINE root within lookback range. Searched: current day and previous day folders.`;
+    debugLog.log(errorMsg, 'error');
+    throw new Error(errorMsg);
   }
+
+  debugLog.log(`[IGM Discovery] ✓ Total 2D SSH files found: ${allMatches.length}`, 'info');
 
   return {
     handle: null,
@@ -199,20 +221,34 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 7) {
 async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 7) {
   let best = null;
 
+  debugLog.log(`[CGMA Discovery] Searching CGMA root for Inhouse XML with lookback=${lookbackDays} days`, 'info');
+
   for (let offset = 0; offset <= lookbackDays; offset += 1) {
     const date = new Date();
     date.setUTCDate(date.getUTCDate() - offset);
     const { y, m, d } = toYmd(date, false);
 
+    const pathLabel = `${y}/${m}/${d}`;
+    debugLog.log(`[CGMA Discovery] Checking date path: ${pathLabel}`, 'info');
+
     try {
       const yearDir = await cgmaRootHandle.getDirectoryHandle(y);
+      debugLog.log(`[CGMA Discovery] ✓ Year dir exists: ${y}`, 'info');
+      
       const monthDir = await yearDir.getDirectoryHandle(m);
+      debugLog.log(`[CGMA Discovery] ✓ Month dir exists: ${y}/${m}`, 'info');
+      
       const dayDir = await monthDir.getDirectoryHandle(d);
+      debugLog.log(`[CGMA Discovery] ✓ Day dir exists: ${pathLabel}`, 'info');
 
+      let guidDirsFound = 0;
       for await (const guidDir of dayDir.values()) {
         if (guidDir.kind !== "directory") {
           continue;
         }
+        guidDirsFound++;
+        debugLog.log(`[CGMA Discovery]   Scanning GUID dir: ${guidDir.name}`, 'info');
+        
         for await (const entry of guidDir.values()) {
           if (entry.kind !== "file") {
             continue;
@@ -227,20 +263,27 @@ async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 7) {
             pathLabel: `${y}/${m}/${d}/${guidDir.name}/${entry.name}`,
             modified: file.lastModified,
           };
+          debugLog.log(`[CGMA Discovery]     Found: ${entry.name} (modified: ${new Date(file.lastModified).toISOString()})`, 'info');
 
           if (!best || candidate.modified > best.modified) {
             best = candidate;
+            debugLog.log(`[CGMA Discovery]     ✓ New best candidate`, 'info');
           }
         }
       }
-    } catch {
-      // Missing date directory is normal during lookback.
+      debugLog.log(`[CGMA Discovery] Scanned ${guidDirsFound} GUID directories in ${pathLabel}`, 'info');
+    } catch (err) {
+      debugLog.log(`[CGMA Discovery] ✗ Path not found: ${pathLabel} (${err.message})`, 'warn');
     }
   }
 
   if (!best) {
-    throw new Error("No Inhouse XML file found in CGMA root within lookback range.");
+    const errorMsg = `No Inhouse XML file found in CGMA root within lookback range. Searched ${lookbackDays} day folders.`;
+    debugLog.log(errorMsg, 'error');
+    throw new Error(errorMsg);
   }
+
+  debugLog.log(`[CGMA Discovery] ✓ Selected file: ${best.pathLabel}`, 'info');
 
   return best;
 }
