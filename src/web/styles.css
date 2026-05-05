@@ -194,6 +194,10 @@ td {
   color: #36c5b5;
 }
 
+.debug-log-success {
+  color: #5cb86b;
+}
+
 .debug-log-warn {
   color: #e3a82b;
 }

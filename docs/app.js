@@ -155,6 +155,17 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
   let latestDateLabel = null;
 
   debugLog.log(`[IGM Discovery] Searching OFFLINE root for 2D scenarios with lookback=${lookbackDays} days`, 'info');
+  // Probe root handle to confirm visibility
+  try {
+    const rootEntries = [];
+    for await (const entry of offlineRootHandle.values()) {
+      rootEntries.push(`${entry.kind}:${entry.name}`);
+      if (rootEntries.length >= 15) { rootEntries.push('...truncated'); break; }
+    }
+    debugLog.log(`[IGM Discovery] Root handle children: ${rootEntries.length ? rootEntries.join(' | ') : '(empty or inaccessible)'}`, 'info');
+  } catch (probeErr) {
+    debugLog.log(`[IGM Discovery] Cannot probe root handle: ${String(probeErr.message || probeErr)}`, 'error');
+  }
 
   // Search across the full lookback window to find latest available 2D SSH set.
   for (let offset = 0; offset <= lookbackDays; offset += 1) {
@@ -180,6 +191,16 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
       debugLog.log(`[IGM Discovery] ✓ Month dir exists: ${y}/${m}`, 'info');
     } catch (err) {
       debugLog.log(`[IGM Discovery] ✗ Month dir missing: ${y}/${m} (${String(err.message || err)})`, 'warn');
+      try {
+        const visible = [];
+        for await (const entry of yearDir.values()) {
+          visible.push(`${entry.kind}:${entry.name}`);
+          if (visible.length >= 20) { visible.push('...truncated'); break; }
+        }
+        debugLog.log(`[IGM Discovery]   Actual children of ${y}: ${visible.length ? visible.join(' | ') : '(empty or inaccessible)'}`, 'warn');
+      } catch (listErr) {
+        debugLog.log(`[IGM Discovery]   Cannot enumerate ${y}: ${String(listErr.message || listErr)}`, 'error');
+      }
       continue;
     }
 
@@ -195,16 +216,41 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
     try {
       const dateMatches = [];
       const allEntriesInDay = [];
+      let nonUsefulCount = 0;
+      let usefulLogged = 0;
+      let nonUsefulLogged = 0;
       for await (const entry of dayDir.values()) {
         allEntriesInDay.push(entry.name);
-        if (entry.kind === "file" && pattern.test(entry.name)) {
+        if (entry.kind !== "file") {
+          continue;
+        }
+
+        const isUseful = pattern.test(entry.name);
+        if (isUseful) {
           dateMatches.push(entry);
+          if (usefulLogged < 30) {
+            debugLog.log(`[IGM Discovery] Useful file: ${entry.name}`, 'success');
+            usefulLogged += 1;
+          }
+        } else {
+          nonUsefulCount += 1;
+          if (nonUsefulLogged < 30) {
+            debugLog.log(`[IGM Discovery] Not useful file: ${entry.name}`, 'warn');
+            nonUsefulLogged += 1;
+          }
         }
       }
 
       debugLog.log(`[IGM Discovery] Files in ${y}/${m}/${d}: ${allEntriesInDay.length} total`, 'info');
       if (allEntriesInDay.length > 0) {
         debugLog.log(`[IGM Discovery]   Sample files: ${allEntriesInDay.slice(0, 3).join(', ')}${allEntriesInDay.length > 3 ? '...' : ''}`, 'info');
+      }
+      debugLog.log(`[IGM Discovery] Useful files: ${dateMatches.length} | Not useful files: ${nonUsefulCount}`, 'info');
+      if (dateMatches.length > usefulLogged) {
+        debugLog.log(`[IGM Discovery] Useful log limit reached, ${dateMatches.length - usefulLogged} additional useful files not shown`, 'info');
+      }
+      if (nonUsefulCount > nonUsefulLogged) {
+        debugLog.log(`[IGM Discovery] Not useful log limit reached, ${nonUsefulCount - nonUsefulLogged} additional files not shown`, 'warn');
       }
       debugLog.log(`[IGM Discovery] 2D DKE/DKW SSH matches found: ${dateMatches.length}`, 'info');
 
