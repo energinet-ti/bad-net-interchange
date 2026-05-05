@@ -186,25 +186,18 @@ pub fn parse_cgma_inhouse(xml_text: String, reverse_sign: bool) -> Result<JsValu
         .descendants()
         .filter(|n| n.is_element() && n.tag_name().name() == "TimeSeries")
     {
-        let mrid_values: Vec<String> = ts_node
-            .descendants()
-            .filter(|n| n.is_element() && n.tag_name().name() == "mRID")
-            .filter_map(|n| n.text())
-            .map(|t| t.trim().to_string())
-            .collect();
+        let ts_id = ts_node.attribute("id").unwrap_or("").to_uppercase();
 
-        let joined = mrid_values.join(" ").to_uppercase();
-
-        let area = if joined.contains("NP-DK1") {
+        let area = if ts_id.contains("NP-DK1") {
             "DK1"
-        } else if joined.contains("NP-DK2") {
+        } else if ts_id.contains("NP-DK2") {
             "DK2"
         } else {
             continue;
         };
 
-        let is_import = joined.contains("-IM");
-        let is_export = joined.contains("-EX");
+        let is_import = ts_id.contains("-IM");
+        let is_export = ts_id.contains("-EX");
 
         if !is_import && !is_export {
             continue;
