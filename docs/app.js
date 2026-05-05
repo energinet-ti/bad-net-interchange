@@ -21,6 +21,7 @@ const el = {
   selectionInfo: document.getElementById("selectionInfo"),
   resultSummary: document.getElementById("resultSummary"),
   resultBody: document.getElementById("resultBody"),
+  debugLog: document.getElementById("debugLog"),
 };
 
 const state = {
@@ -29,6 +30,28 @@ const state = {
   discoveredIgmFiles: [],
   latestCgmaFileHandle: null,
   initialized: false,
+};
+
+const debugLog = {
+  entries: [],
+  log(message, level = 'info') {
+    const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+    const entry = `[${timestamp}] ${message}`;
+    this.entries.push({ message: entry, level });
+    if (this.entries.length > 100) {
+      this.entries.shift();
+    }
+    this.render();
+    console.log(`[${level.toUpperCase()}]`, message);
+  },
+  render() {
+    const container = el.debugLog;
+    if (!container) return;
+    container.innerHTML = this.entries
+      .map(e => `<div class="debug-log-entry debug-log-${e.level}">${e.message}</div>`)
+      .join('');
+    container.scrollTop = container.scrollHeight;
+  },
 };
 
 function toYmd(date, zeroPad) {
@@ -223,10 +246,13 @@ async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 7) {
 }
 
 async function scanSources() {
+  debugLog.log(`Scanning sources...`);
   const igm = await findLatestIgmFolder(state.offlineRootHandle);
+  debugLog.log(`Found IGM files: ${igm.files.length} in date ${igm.dateLabel}`);
   state.discoveredIgmFiles = igm.files;
 
   const cgma = await findLatestCgmaXml(state.cgmaRootHandle);
+  debugLog.log(`Found CGMA file: ${cgma.pathLabel}`);
   state.latestCgmaFileHandle = cgma.handle;
 
   const versionSet = new Set();
@@ -262,6 +288,7 @@ function renderRows(rows) {
 }
 
 async function runComparison() {
+  debugLog.log(`Starting comparison run...`, 'info');
   if (!state.offlineRootHandle || !state.cgmaRootHandle) {
     throw new Error("Please configure both folder permissions in Settings first.");
   }
@@ -269,27 +296,35 @@ async function runComparison() {
   await scanSources();
 
   const igmRecords = [];
+  debugLog.log(`Parsing ${state.discoveredIgmFiles.length} IGM files...`, 'info');
   for (const fileHandle of state.discoveredIgmFiles) {
     const file = await fileHandle.getFile();
     const bytes = new Uint8Array(await file.arrayBuffer());
     try {
       const record = extract_igm_record(file.name, bytes);
       igmRecords.push(record);
-    } catch {
-      // Non-parseable files are skipped.
+      debugLog.log(`✓ Parsed IGM: ${file.name}`, 'info');
+    } catch (err) {
+      debugLog.log(`✗ Failed to parse IGM ${file.name}: ${String(err).substring(0, 100)}`, 'warn');
     }
   }
 
+  debugLog.log(`Successfully parsed ${igmRecords.length}/${state.discoveredIgmFiles.length} IGM records`, 'info');
   if (igmRecords.length === 0) {
     throw new Error("No parseable IGM records were found in the selected date folder.");
   }
 
+  debugLog.log(`Reading CGMA file...`, 'info');
   const cgmaFile = await state.latestCgmaFileHandle.getFile();
   const cgmaText = await cgmaFile.text();
+  debugLog.log(`CGMA file size: ${cgmaText.length} bytes`, 'info');
   const cgmaEntries = parse_cgma_inhouse(cgmaText, false);
+  debugLog.log(`Parsed ${cgmaEntries.length} CGMA entries`, 'info');
 
   const selectedVersion = el.versionSelect.value || "latest";
+  debugLog.log(`Running comparison with version mode: ${selectedVersion}`, 'info');
   const output = compare_records(igmRecords, cgmaEntries, selectedVersion, 50, 200);
+  debugLog.log(`Comparison complete: ${output.matched_rows} rows matched`, 'info');
 
   renderRows(output.rows);
   setResultSummary(
@@ -299,23 +334,29 @@ async function runComparison() {
 }
 
 async function grantOfflineRoot() {
+  debugLog.log(`Requesting OFFLINE root access...`, 'info');
   const handle = await window.showDirectoryPicker({ mode: "read" });
+  debugLog.log(`OFFLINE root handle obtained`, 'info');
   if (!(await ensureReadPermission(handle))) {
     throw new Error("Read permission denied for OFFLINE root.");
   }
   state.offlineRootHandle = handle;
   await saveHandle("offlineRoot", handle);
   setFolderStatus();
+  debugLog.log(`OFFLINE root saved to IndexedDB`, 'info');
 }
 
 async function grantCgmaRoot() {
+  debugLog.log(`Requesting CGMA root access...`, 'info');
   const handle = await window.showDirectoryPicker({ mode: "read" });
+  debugLog.log(`CGMA root handle obtained`, 'info');
   if (!(await ensureReadPermission(handle))) {
     throw new Error("Read permission denied for CGMA root.");
   }
   state.cgmaRootHandle = handle;
   await saveHandle("cgmaRoot", handle);
   setFolderStatus();
+  debugLog.log(`CGMA root saved to IndexedDB`, 'info');
 }
 
 async function restoreHandles() {
@@ -345,7 +386,9 @@ function bindUi() {
       await grantOfflineRoot();
       setResultSummary("OFFLINE root granted.");
     } catch (err) {
-      setResultSummary(String(err.message || err));
+      const msg = String(err.message || err);
+      debugLog.log(`Error granting OFFLINE root: ${msg}`, 'error');
+      setResultSummary(msg);
     }
   });
 
@@ -354,7 +397,9 @@ function bindUi() {
       await grantCgmaRoot();
       setResultSummary("CGMA root granted.");
     } catch (err) {
-      setResultSummary(String(err.message || err));
+      const msg = String(err.message || err);
+      debugLog.log(`Error granting CGMA root: ${msg}`, 'error');
+      setResultSummary(msg);
     }
   });
 
@@ -363,21 +408,28 @@ function bindUi() {
       setResultSummary("Scanning folders and running comparison...");
       await runComparison();
     } catch (err) {
+      const msg = String(err.message || err);
       clearResults();
-      setResultSummary(String(err.message || err));
+      setResultSummary(msg);
+      debugLog.log(`Comparison failed: ${msg}`, 'error');
     }
   });
 }
 
 async function main() {
+  debugLog.log(`Initializing app...`, 'info');
   await initWasm();
+  debugLog.log(`WASM initialized`, 'info');
   setup_panic_hook();
   bindUi();
   await restoreHandles();
   state.initialized = true;
+  debugLog.log(`App ready`, 'info');
   setResultSummary("Ready. Open Settings and grant folder access to run comparison.");
 }
 
 main().catch((err) => {
-  setResultSummary(`Initialization failed: ${String(err.message || err)}`);
+  const msg = `Initialization failed: ${String(err.message || err)}`;
+  debugLog.log(msg, 'error');
+  setResultSummary(msg);
 });

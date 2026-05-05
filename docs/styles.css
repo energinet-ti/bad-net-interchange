@@ -171,6 +171,37 @@ td {
   margin-top: 12px;
 }
 
+.debug-console {
+  background: #0a0c0e;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 0.85rem;
+  max-height: 240px;
+  overflow-y: auto;
+  color: var(--text-soft);
+}
+
+.debug-log-entry {
+  margin: 2px 0;
+  padding: 2px 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.debug-log-info {
+  color: #36c5b5;
+}
+
+.debug-log-warn {
+  color: #e3a82b;
+}
+
+.debug-log-error {
+  color: #d8584c;
+}
+
 @media (max-width: 800px) {
   .topbar {
     flex-direction: column;
