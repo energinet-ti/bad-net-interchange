@@ -71,11 +71,7 @@ fn truncate_hour(ts: &str) -> Option<String> {
 }
 
 fn version_rank(version: &str) -> i32 {
-    if version.eq_ignore_ascii_case("2D") {
-        999
-    } else {
-        version.parse::<i32>().unwrap_or(0)
-    }
+    version.parse::<i32>().unwrap_or(0)
 }
 
 fn area_from_igm_file(area_code: &str) -> &'static str {
@@ -94,7 +90,7 @@ pub fn setup_panic_hook() {
 #[wasm_bindgen]
 pub fn extract_igm_record(file_name: String, zip_bytes: &[u8]) -> Result<JsValue, JsValue> {
     let re = Regex::new(
-        r"(?P<timestamp>\d{8}T\d{4}Z)_(?P<version>\w+)_(?P<area>DKE|DKW)_SSH_\d+\.zip$",
+        r"(?P<timestamp>\d{8}T\d{4}Z)_2D_(?P<area>DKE|DKW)_SSH_(?P<version>\d{3})\.zip$",
     )
     .map_err(|e| JsValue::from_str(&format!("Regex error: {e}")))?;
 

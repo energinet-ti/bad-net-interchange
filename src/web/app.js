@@ -125,9 +125,6 @@ function clearResults() {
 }
 
 function versionRank(version) {
-  if (String(version).toUpperCase() === "2D") {
-    return 999;
-  }
   const n = Number.parseInt(version, 10);
   return Number.isFinite(n) ? n : 0;
 }
@@ -152,14 +149,14 @@ function fillVersionSelect(versions) {
 }
 
 async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 7) {
-  const pattern = /\d{8}T\d{4}Z_\w+_(DKE|DKW)_SSH_\d+\.zip$/;
+  const pattern = /^\d{8}T\d{4}Z_2D_(DKE|DKW)_SSH_\d{3}\.zip$/;
   let allMatches = [];
   let latestDateLabel = null;
 
   debugLog.log(`[IGM Discovery] Searching OFFLINE root for 2D scenarios with lookback=${lookbackDays} days`, 'info');
 
-  // Search current and previous date for full 24-hour coverage
-  for (let offset = 0; offset <= 1 && offset <= lookbackDays; offset += 1) {
+  // Search across the full lookback window to find latest available 2D SSH set.
+  for (let offset = 0; offset <= lookbackDays; offset += 1) {
     const date = new Date();
     date.setUTCDate(date.getUTCDate() - offset);
     const { y, m, d } = toYmd(date, true);
@@ -181,7 +178,7 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 7) {
       const allEntriesInDay = [];
       for await (const entry of dayDir.values()) {
         allEntriesInDay.push(entry.name);
-        if (entry.kind === "file" && pattern.test(entry.name) && entry.name.includes("_2D_")) {
+        if (entry.kind === "file" && pattern.test(entry.name)) {
           dateMatches.push(entry);
         }
       }
@@ -190,7 +187,7 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 7) {
       if (allEntriesInDay.length > 0) {
         debugLog.log(`[IGM Discovery]   Sample files: ${allEntriesInDay.slice(0, 3).join(', ')}${allEntriesInDay.length > 3 ? '...' : ''}`, 'info');
       }
-      debugLog.log(`[IGM Discovery] 2D SSH matches found: ${dateMatches.length}`, 'info');
+      debugLog.log(`[IGM Discovery] 2D DKE/DKW SSH matches found: ${dateMatches.length}`, 'info');
 
       if (dateMatches.length > 0) {
         allMatches = allMatches.concat(dateMatches);
@@ -204,12 +201,12 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 7) {
   }
 
   if (allMatches.length === 0) {
-    const errorMsg = `No 2D IGM files found in the OFFLINE root within lookback range. Searched: current day and previous day folders.`;
+    const errorMsg = `No 2D DKE/DKW SSH files found in the OFFLINE root within lookback range.`;
     debugLog.log(errorMsg, 'error');
     throw new Error(errorMsg);
   }
 
-  debugLog.log(`[IGM Discovery] ✓ Total 2D SSH files found: ${allMatches.length}`, 'info');
+  debugLog.log(`[IGM Discovery] ✓ Total 2D DKE/DKW SSH files found: ${allMatches.length}`, 'info');
 
   return {
     handle: null,
@@ -299,11 +296,11 @@ async function scanSources() {
   state.latestCgmaFileHandle = cgma.handle;
 
   const versionSet = new Set();
-  const versionPattern = /\d{8}T\d{4}Z_(\w+)_(DKE|DKW)_SSH_\d+\.zip$/;
+  const versionPattern = /^\d{8}T\d{4}Z_2D_(DKE|DKW)_SSH_(\d{3})\.zip$/;
   for (const f of igm.files) {
     const m = f.name.match(versionPattern);
     if (m) {
-      versionSet.add(m[1]);
+      versionSet.add(m[2]);
     }
   }
 
