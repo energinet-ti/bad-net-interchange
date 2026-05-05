@@ -171,7 +171,7 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
   for (let offset = 0; offset <= lookbackDays; offset += 1) {
     const date = new Date();
     date.setUTCDate(date.getUTCDate() - offset);
-    const { y, m, d } = toYmd(date, true);
+    const { y, m, d } = toYmd(date, false);
 
     const pathLabel = `${y}/${m}/${d}`;
     debugLog.log(`[IGM Discovery] Checking date path: ${pathLabel}`, 'info');

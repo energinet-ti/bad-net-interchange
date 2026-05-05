@@ -135,9 +135,9 @@ pub fn extract_igm_record(file_name: String, zip_bytes: &[u8]) -> Result<JsValue
 
     let scenario_time_raw = doc
         .descendants()
-        .find(|n| n.is_element() && n.tag_name().name() == "FullModel.scenarioTime")
+        .find(|n| n.is_element() && n.tag_name().name() == "Model.scenarioTime")
         .and_then(|n| n.text())
-        .ok_or_else(|| JsValue::from_str("FullModel.scenarioTime not found"))?;
+        .ok_or_else(|| JsValue::from_str("Model.scenarioTime not found in SSH XML"))?;
 
     let ssh_timestamp = normalize_timestamp(scenario_time_raw)
         .ok_or_else(|| JsValue::from_str("Invalid scenario timestamp format"))?;
