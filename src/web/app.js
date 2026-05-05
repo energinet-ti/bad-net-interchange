@@ -111,8 +111,8 @@ async function ensureReadPermission(handle) {
 }
 
 function setFolderStatus() {
-  const offline = state.offlineRootHandle ? "configured" : "missing";
-  const cgma = state.cgmaRootHandle ? "configured" : "missing";
+  const offline = state.offlineRootHandle ? `✓ ${state.offlineRootHandle.name}` : "✗ not set";
+  const cgma = state.cgmaRootHandle ? `✓ ${state.cgmaRootHandle.name}` : "✗ not set";
   el.folderStatus.textContent = `OFFLINE root: ${offline}\nCGMA root: ${cgma}`;
 }
 
@@ -497,7 +497,7 @@ async function grantOfflineRoot() {
   await saveHandle("offlineRoot", handle);
   setFolderStatus();
   await logHandlePreview(handle, "OFFLINE root");
-  debugLog.log(`OFFLINE root saved to IndexedDB`, 'info');
+  debugLog.log(`OFFLINE root saved: "${handle.name}" (key: offlineRoot)`, 'info');
 }
 
 async function grantCgmaRoot() {
@@ -511,7 +511,7 @@ async function grantCgmaRoot() {
   await saveHandle("cgmaRoot", handle);
   setFolderStatus();
   await logHandlePreview(handle, "CGMA root");
-  debugLog.log(`CGMA root saved to IndexedDB`, 'info');
+  debugLog.log(`CGMA root saved: "${handle.name}" (key: cgmaRoot)`, 'info');
 }
 
 async function restoreHandles() {
@@ -520,9 +520,15 @@ async function restoreHandles() {
 
   if (offline && (await ensureReadPermission(offline))) {
     state.offlineRootHandle = offline;
+    debugLog.log(`Restored OFFLINE root: "${offline.name}"`, 'info');
+  } else if (offline) {
+    debugLog.log(`OFFLINE root "${offline.name}" in IndexedDB but permission not granted`, 'warn');
   }
   if (cgma && (await ensureReadPermission(cgma))) {
     state.cgmaRootHandle = cgma;
+    debugLog.log(`Restored CGMA root: "${cgma.name}"`, 'info');
+  } else if (cgma) {
+    debugLog.log(`CGMA root "${cgma.name}" in IndexedDB but permission not granted`, 'warn');
   }
   setFolderStatus();
 }
