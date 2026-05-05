@@ -165,14 +165,34 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
     const pathLabel = `${y}/${m}/${d}`;
     debugLog.log(`[IGM Discovery] Checking date path: ${pathLabel}`, 'info');
 
+    let yearDir;
     try {
-      const yearDir = await offlineRootHandle.getDirectoryHandle(y);
+      yearDir = await offlineRootHandle.getDirectoryHandle(y);
       debugLog.log(`[IGM Discovery] ✓ Year dir exists: ${y}`, 'info');
-      const monthDir = await yearDir.getDirectoryHandle(m);
-      debugLog.log(`[IGM Discovery] ✓ Month dir exists: ${y}/${m}`, 'info');
-      const dayDir = await monthDir.getDirectoryHandle(d);
-      debugLog.log(`[IGM Discovery] ✓ Day dir exists: ${y}/${m}/${d}`, 'info');
+    } catch (err) {
+      debugLog.log(`[IGM Discovery] ✗ Year dir missing: ${y} (${String(err.message || err)})`, 'warn');
+      continue;
+    }
 
+    let monthDir;
+    try {
+      monthDir = await yearDir.getDirectoryHandle(m);
+      debugLog.log(`[IGM Discovery] ✓ Month dir exists: ${y}/${m}`, 'info');
+    } catch (err) {
+      debugLog.log(`[IGM Discovery] ✗ Month dir missing: ${y}/${m} (${String(err.message || err)})`, 'warn');
+      continue;
+    }
+
+    let dayDir;
+    try {
+      dayDir = await monthDir.getDirectoryHandle(d);
+      debugLog.log(`[IGM Discovery] ✓ Day dir exists: ${y}/${m}/${d}`, 'info');
+    } catch (err) {
+      debugLog.log(`[IGM Discovery] ✗ Day dir missing: ${y}/${m}/${d} (${String(err.message || err)})`, 'warn');
+      continue;
+    }
+
+    try {
       const dateMatches = [];
       const allEntriesInDay = [];
       for await (const entry of dayDir.values()) {
@@ -195,7 +215,7 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
         }
       }
     } catch (err) {
-      debugLog.log(`[IGM Discovery] ✗ Path not found: ${pathLabel} (${err.message})`, 'warn');
+      debugLog.log(`[IGM Discovery] ✗ Failed while listing ${pathLabel}: ${String(err.message || err)}`, 'warn');
     }
   }
 
@@ -228,16 +248,34 @@ async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 1) {
     const pathLabel = `${y}/${m}/${d}`;
     debugLog.log(`[CGMA Discovery] Checking date path: ${pathLabel}`, 'info');
 
+    let yearDir;
     try {
-      const yearDir = await cgmaRootHandle.getDirectoryHandle(y);
+      yearDir = await cgmaRootHandle.getDirectoryHandle(y);
       debugLog.log(`[CGMA Discovery] ✓ Year dir exists: ${y}`, 'info');
-      
-      const monthDir = await yearDir.getDirectoryHandle(m);
-      debugLog.log(`[CGMA Discovery] ✓ Month dir exists: ${y}/${m}`, 'info');
-      
-      const dayDir = await monthDir.getDirectoryHandle(d);
-      debugLog.log(`[CGMA Discovery] ✓ Day dir exists: ${pathLabel}`, 'info');
+    } catch (err) {
+      debugLog.log(`[CGMA Discovery] ✗ Year dir missing: ${y} (${String(err.message || err)})`, 'warn');
+      continue;
+    }
 
+    let monthDir;
+    try {
+      monthDir = await yearDir.getDirectoryHandle(m);
+      debugLog.log(`[CGMA Discovery] ✓ Month dir exists: ${y}/${m}`, 'info');
+    } catch (err) {
+      debugLog.log(`[CGMA Discovery] ✗ Month dir missing: ${y}/${m} (${String(err.message || err)})`, 'warn');
+      continue;
+    }
+
+    let dayDir;
+    try {
+      dayDir = await monthDir.getDirectoryHandle(d);
+      debugLog.log(`[CGMA Discovery] ✓ Day dir exists: ${pathLabel}`, 'info');
+    } catch (err) {
+      debugLog.log(`[CGMA Discovery] ✗ Day dir missing: ${pathLabel} (${String(err.message || err)})`, 'warn');
+      continue;
+    }
+
+    try {
       let guidDirsFound = 0;
       for await (const guidDir of dayDir.values()) {
         if (guidDir.kind !== "directory") {
@@ -270,7 +308,7 @@ async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 1) {
       }
       debugLog.log(`[CGMA Discovery] Scanned ${guidDirsFound} GUID directories in ${pathLabel}`, 'info');
     } catch (err) {
-      debugLog.log(`[CGMA Discovery] ✗ Path not found: ${pathLabel} (${err.message})`, 'warn');
+      debugLog.log(`[CGMA Discovery] ✗ Failed while listing ${pathLabel}: ${String(err.message || err)}`, 'warn');
     }
   }
 
@@ -373,6 +411,35 @@ async function runComparison() {
   );
 }
 
+async function logHandlePreview(handle, label) {
+  try {
+    const entries = [];
+    let fileCount = 0;
+    let dirCount = 0;
+
+    for await (const entry of handle.values()) {
+      entries.push(`${entry.kind}:${entry.name}`);
+      if (entry.kind === "file") {
+        fileCount += 1;
+      } else if (entry.kind === "directory") {
+        dirCount += 1;
+      }
+      if (entries.length >= 15) {
+        break;
+      }
+    }
+
+    debugLog.log(`[Folder Probe] ${label}: top-level dirs=${dirCount}, files=${fileCount} (sampled first ${entries.length} entries)`, 'info');
+    if (entries.length > 0) {
+      debugLog.log(`[Folder Probe] ${label}: ${entries.join(' | ')}`, 'info');
+    } else {
+      debugLog.log(`[Folder Probe] ${label}: folder appears empty or inaccessible`, 'warn');
+    }
+  } catch (err) {
+    debugLog.log(`[Folder Probe] ${label}: unable to enumerate entries (${String(err.message || err)})`, 'warn');
+  }
+}
+
 async function grantOfflineRoot() {
   debugLog.log(`Requesting OFFLINE root access...`, 'info');
   const handle = await window.showDirectoryPicker({ mode: "read" });
@@ -383,6 +450,7 @@ async function grantOfflineRoot() {
   state.offlineRootHandle = handle;
   await saveHandle("offlineRoot", handle);
   setFolderStatus();
+  await logHandlePreview(handle, "OFFLINE root");
   debugLog.log(`OFFLINE root saved to IndexedDB`, 'info');
 }
 
@@ -396,6 +464,7 @@ async function grantCgmaRoot() {
   state.cgmaRootHandle = handle;
   await saveHandle("cgmaRoot", handle);
   setFolderStatus();
+  await logHandlePreview(handle, "CGMA root");
   debugLog.log(`CGMA root saved to IndexedDB`, 'info');
 }
 
