@@ -148,7 +148,8 @@ function fillVersionSelect(versions) {
   el.versionSelect.value = "latest";
 }
 
-async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 7) {
+async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
+  lookbackDays = Math.min(lookbackDays, 1);
   const pattern = /^\d{8}T\d{4}Z_2D_(DKE|DKW)_SSH_\d{3}\.zip$/;
   let allMatches = [];
   let latestDateLabel = null;
@@ -167,12 +168,10 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 7) {
     try {
       const yearDir = await offlineRootHandle.getDirectoryHandle(y);
       debugLog.log(`[IGM Discovery] ✓ Year dir exists: ${y}`, 'info');
-      
       const monthDir = await yearDir.getDirectoryHandle(m);
       debugLog.log(`[IGM Discovery] ✓ Month dir exists: ${y}/${m}`, 'info');
-      
       const dayDir = await monthDir.getDirectoryHandle(d);
-      debugLog.log(`[IGM Discovery] ✓ Day dir exists: ${pathLabel}`, 'info');
+      debugLog.log(`[IGM Discovery] ✓ Day dir exists: ${y}/${m}/${d}`, 'info');
 
       const dateMatches = [];
       const allEntriesInDay = [];
@@ -183,7 +182,7 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 7) {
         }
       }
 
-      debugLog.log(`[IGM Discovery] Files in ${pathLabel}: ${allEntriesInDay.length} total`, 'info');
+      debugLog.log(`[IGM Discovery] Files in ${y}/${m}/${d}: ${allEntriesInDay.length} total`, 'info');
       if (allEntriesInDay.length > 0) {
         debugLog.log(`[IGM Discovery]   Sample files: ${allEntriesInDay.slice(0, 3).join(', ')}${allEntriesInDay.length > 3 ? '...' : ''}`, 'info');
       }
@@ -215,7 +214,8 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 7) {
   };
 }
 
-async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 7) {
+async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 1) {
+  lookbackDays = Math.min(lookbackDays, 1);
   let best = null;
 
   debugLog.log(`[CGMA Discovery] Searching CGMA root for Inhouse XML with lookback=${lookbackDays} days`, 'info');
