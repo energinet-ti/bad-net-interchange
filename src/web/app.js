@@ -20,8 +20,14 @@ const el = {
   versionSelect: document.getElementById("versionSelect"),
   selectionInfo: document.getElementById("selectionInfo"),
   resultSummary: document.getElementById("resultSummary"),
-  resultBody: document.getElementById("resultBody"),
+  resultBodyDk1: document.getElementById("resultBodyDk1"),
+  resultBodyDk2: document.getElementById("resultBodyDk2"),
   debugLog: document.getElementById("debugLog"),
+  debugPanel: document.getElementById("debugPanel"),
+  debugToggleButton: document.getElementById("debugToggleButton"),
+  loaderCard: document.getElementById("loaderCard"),
+  progressFill: document.getElementById("progressFill"),
+  progressText: document.getElementById("progressText"),
 };
 
 const state = {
@@ -30,6 +36,7 @@ const state = {
   discoveredIgmFiles: [],
   latestCgmaFileHandle: null,
   initialized: false,
+  busy: false,
 };
 
 const debugLog = {
@@ -121,7 +128,26 @@ function setResultSummary(message) {
 }
 
 function clearResults() {
-  el.resultBody.innerHTML = "";
+  el.resultBodyDk1.innerHTML = "";
+  el.resultBodyDk2.innerHTML = "";
+}
+
+function setBusy(active, message = "Working...", fraction = 0) {
+  state.busy = active;
+  el.runButton.disabled = active;
+  el.loaderCard.classList.toggle("hidden", !active);
+
+  if (el.progressText) {
+    el.progressText.textContent = message;
+  }
+  if (el.progressFill) {
+    const clamped = Math.max(0, Math.min(100, Math.round(fraction * 100)));
+    el.progressFill.style.width = `${clamped}%`;
+  }
+}
+
+function setProgress(message, fraction) {
+  setBusy(true, message, fraction);
 }
 
 function versionRank(version) {
@@ -394,20 +420,31 @@ async function scanSources() {
 
 function renderRows(rows) {
   clearResults();
-  for (const row of rows) {
+  const sorted = [...rows].sort((a, b) => {
+    if (String(a.area) !== String(b.area)) {
+      return String(a.area).localeCompare(String(b.area));
+    }
+    return String(a.aligned_timestamp).localeCompare(String(b.aligned_timestamp));
+  });
+
+  for (const row of sorted) {
     const tr = document.createElement("tr");
     const statusClass = `status-${String(row.status).toLowerCase()}`;
 
     tr.innerHTML = `
       <td>${row.aligned_timestamp}</td>
-      <td>${row.area}</td>
       <td>${row.ssh_version}</td>
       <td>${Number(row.ssh_net_interchange_mw).toFixed(3)}</td>
       <td>${Number(row.cgma_net_position_mw).toFixed(3)}</td>
       <td>${Number(row.difference_mw).toFixed(3)}</td>
       <td class="${statusClass}">${row.status}</td>
     `;
-    el.resultBody.appendChild(tr);
+
+    if (row.area === "DK1") {
+      el.resultBodyDk1.appendChild(tr);
+    } else if (row.area === "DK2") {
+      el.resultBodyDk2.appendChild(tr);
+    }
   }
 }
 
@@ -417,11 +454,14 @@ async function runComparison() {
     throw new Error("Please configure both folder permissions in Settings first.");
   }
 
+  setProgress("Scanning source folders...", 0.08);
   await scanSources();
 
   const igmRecords = [];
+  const totalIgm = state.discoveredIgmFiles.length || 1;
   debugLog.log(`Parsing ${state.discoveredIgmFiles.length} IGM files...`, 'info');
-  for (const fileHandle of state.discoveredIgmFiles) {
+  for (let i = 0; i < state.discoveredIgmFiles.length; i += 1) {
+    const fileHandle = state.discoveredIgmFiles[i];
     const file = await fileHandle.getFile();
     const bytes = new Uint8Array(await file.arrayBuffer());
     try {
@@ -431,6 +471,8 @@ async function runComparison() {
     } catch (err) {
       debugLog.log(`✗ Failed to parse IGM ${file.name}: ${String(err).substring(0, 100)}`, 'warn');
     }
+    const fraction = 0.08 + 0.62 * ((i + 1) / totalIgm);
+    setProgress(`Parsing IGM ${i + 1}/${totalIgm}...`, fraction);
   }
 
   debugLog.log(`Successfully parsed ${igmRecords.length}/${state.discoveredIgmFiles.length} IGM records`, 'info');
@@ -438,23 +480,30 @@ async function runComparison() {
     throw new Error("No parseable IGM records were found in the selected date folder.");
   }
 
+  setProgress("Reading CGMA file...", 0.75);
   debugLog.log(`Reading CGMA file...`, 'info');
   const cgmaFile = await state.latestCgmaFileHandle.getFile();
   const cgmaText = await cgmaFile.text();
   debugLog.log(`CGMA file size: ${cgmaText.length} bytes`, 'info');
+
+  setProgress("Parsing CGMA entries...", 0.84);
   const cgmaEntries = parse_cgma_inhouse(cgmaText, false);
   debugLog.log(`Parsed ${cgmaEntries.length} CGMA entries`, 'info');
 
   const selectedVersion = el.versionSelect.value || "latest";
+  setProgress("Comparing records...", 0.93);
   debugLog.log(`Running comparison with version mode: ${selectedVersion}`, 'info');
   const output = compare_records(igmRecords, cgmaEntries, selectedVersion, 50, 200);
   debugLog.log(`Comparison complete: ${output.matched_rows} rows matched`, 'info');
 
+  setProgress("Rendering tables...", 0.98);
   renderRows(output.rows);
   setResultSummary(
     `Matched rows: ${output.matched_rows} | Versions discovered: ${output.discovered_versions.join(", ") || "n/a"
     } | Version mode: ${selectedVersion}`
   );
+
+  setProgress("Done", 1);
 }
 
 async function logHandlePreview(handle, label) {
@@ -566,6 +615,7 @@ function bindUi() {
 
   el.runButton.addEventListener("click", async () => {
     try {
+      setBusy(true, "Starting comparison...", 0.02);
       setResultSummary("Scanning folders and running comparison...");
       await runComparison();
     } catch (err) {
@@ -573,11 +623,19 @@ function bindUi() {
       clearResults();
       setResultSummary(msg);
       debugLog.log(`Comparison failed: ${msg}`, 'error');
+    } finally {
+      setBusy(false, "Done", 1);
     }
+  });
+
+  el.debugToggleButton.addEventListener("click", () => {
+    const isCollapsed = el.debugPanel.classList.toggle("collapsed");
+    el.debugToggleButton.textContent = isCollapsed ? "Show Debug" : "Hide Debug";
   });
 }
 
 async function main() {
+  setBusy(false, "Ready", 0);
   debugLog.log(`Initializing app...`, 'info');
   await initWasm();
   debugLog.log(`WASM initialized`, 'info');

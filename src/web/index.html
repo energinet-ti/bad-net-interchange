@@ -8,16 +8,31 @@
   </head>
   <body>
     <main class="app-shell">
-      <header class="topbar">
-        <div class="brand">
+      <header class="hero">
+        <div class="hero__glow"></div>
+        <div class="hero__content">
+          <p class="eyebrow">Energinet Operations</p>
           <h1>CGMA vs IGM Comparator</h1>
-          <p>Rust + WASM static app for latest 2D scenario checks</p>
+          <p class="subtitle">Client-side Rust + WASM validation of latest 2D SSH scenarios against CGMA inhouse net position.</p>
         </div>
         <div class="actions">
           <button id="settingsButton" class="btn btn-secondary">Settings</button>
           <button id="runButton" class="btn btn-primary">Run Comparison</button>
         </div>
       </header>
+
+      <section id="loaderCard" class="card loader-card hidden" aria-live="polite">
+        <div class="loader-row">
+          <div class="spinner" aria-hidden="true"></div>
+          <div>
+            <div id="progressText" class="loader-title">Preparing...</div>
+            <div class="loader-sub">Parsing files and matching timestamps</div>
+          </div>
+        </div>
+        <div class="progress-track">
+          <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+        </div>
+      </section>
 
       <section class="status-grid">
         <article class="card">
@@ -36,41 +51,66 @@
 
       <section class="card copy-card">
         <h2>Required Folder Access</h2>
-        <p>Use the Settings button and grant read access to both root folders below:</p>
+        <p>Grant read access to these roots once. The app remembers both handles across sessions.</p>
         <textarea readonly class="copy-box">\\fs61\driftdata\Drift\Arkiv\CGMES\OFFLINE\
 \\fs61\BizTalkFileShare\BTS2010\Common\Tracking\CGMA_TSO\</textarea>
       </section>
 
       <section class="card">
-        <h2>Debug Console</h2>
-        <div id="debugLog" class="debug-console"></div>
-      </section>
-
-      <section class="card">
         <h2>Comparison Output</h2>
         <div id="resultSummary" class="small">No comparison run yet.</div>
-        <div class="table-wrap">
-          <table id="resultTable">
-            <thead>
-              <tr>
-                <th>Time (UTC)</th>
-                <th>Area</th>
-                <th>Version</th>
-                <th>IGM MW</th>
-                <th>CGMA MW</th>
-                <th>Diff MW</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="resultBody"></tbody>
-          </table>
+        <div class="split-tables">
+          <article class="table-card">
+            <h3>DK1</h3>
+            <div class="table-wrap">
+              <table id="resultTableDk1">
+                <thead>
+                  <tr>
+                    <th>Time (UTC)</th>
+                    <th>Version</th>
+                    <th>IGM MW</th>
+                    <th>CGMA MW</th>
+                    <th>Diff MW</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="resultBodyDk1"></tbody>
+              </table>
+            </div>
+          </article>
+          <article class="table-card">
+            <h3>DK2</h3>
+            <div class="table-wrap">
+              <table id="resultTableDk2">
+                <thead>
+                  <tr>
+                    <th>Time (UTC)</th>
+                    <th>Version</th>
+                    <th>IGM MW</th>
+                    <th>CGMA MW</th>
+                    <th>Diff MW</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="resultBodyDk2"></tbody>
+              </table>
+            </div>
+          </article>
         </div>
+      </section>
+
+      <section class="card debug-panel collapsed" id="debugPanel">
+        <div class="debug-head">
+          <h2>Debug Console</h2>
+          <button id="debugToggleButton" class="btn btn-secondary">Show Debug</button>
+        </div>
+        <div id="debugLog" class="debug-console"></div>
       </section>
     </main>
 
     <dialog id="settingsDialog" class="settings-dialog">
       <h2>Folder Permissions</h2>
-      <p>Grant read access to both source roots. The app will scan date subfolders automatically.</p>
+      <p>Grant read access to both source roots. The app scans date + GUID subfolders automatically.</p>
       <div class="settings-actions">
         <button id="grantOfflineButton" class="btn btn-secondary">Grant OFFLINE Root</button>
         <button id="grantCgmaButton" class="btn btn-secondary">Grant CGMA Root</button>
