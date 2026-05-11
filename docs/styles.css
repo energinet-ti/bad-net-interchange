@@ -233,6 +233,62 @@ select {
   gap: 14px;
 }
 
+.charts-section {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.charts-section.hidden {
+  display: none;
+}
+
+.chart-card {
+  background: rgba(7, 19, 29, 0.55);
+  border: 1px solid rgba(167, 225, 255, 0.18);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.chart-card h3 {
+  margin: 0 0 12px;
+  color: var(--indigo);
+  font-size: 1rem;
+}
+
+.chart-card canvas {
+  max-height: 320px;
+}
+
+.tabs-container {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab-button {
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-soft);
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 160ms ease;
+}
+
+.tab-button:hover {
+  color: var(--text);
+}
+
+.tab-button.active {
+  color: var(--teal-bright);
+  border-bottom-color: var(--teal-bright);
+}
+
 .table-card {
   background: rgba(7, 19, 29, 0.55);
   border: 1px solid rgba(167, 225, 255, 0.18);
@@ -361,7 +417,8 @@ th {
   }
 
   .status-grid,
-  .split-tables {
+  .split-tables,
+  .charts-section {
     grid-template-columns: 1fr;
   }
 

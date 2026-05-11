@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CGMA vs IGM Comparator</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
   </head>
   <body>
     <main class="app-shell">
@@ -36,8 +37,9 @@
 
       <section class="status-grid">
         <article class="card">
-          <h2>Configured Folders</h2>
-          <div id="folderStatus" class="mono small">No folders selected yet.</div>
+          <h2>Mounted Root Folder</h2>
+          <div id="folderStatus" class="mono small">No root folder mounted yet.</div>
+          <button id="remountButton" class="btn btn-secondary" style="margin-top: 8px; display: none;">Re-mount Folder</button>
         </article>
         <article class="card">
           <h2>Selection</h2>
@@ -50,16 +52,32 @@
       </section>
 
       <section class="card copy-card">
-        <h2>Required Folder Access</h2>
-        <p>Grant read access to these roots once. The app remembers both handles across sessions.</p>
-        <textarea readonly class="copy-box">\\fs61\driftdata\Drift\Arkiv\CGMES\OFFLINE\
-\\fs61\BizTalkFileShare\BTS2010\Common\Tracking\CGMA_TSO\</textarea>
+        <h2>Single Root Folder Path</h2>
+        <p>Grant read access to this root folder once. The app automatically discovers the OFFLINE and CGMA_TSO subfolders. Click "Re-mount Folder" in the status card above to re-select the same folder in future sessions.</p>
+        <textarea readonly class="copy-box">\\fs61\</textarea>
       </section>
 
       <section class="card">
         <h2>Comparison Output</h2>
         <div id="resultSummary" class="small">No comparison run yet.</div>
-        <div class="split-tables">
+        
+        <div class="tabs-container" id="tabsContainer">
+          <button id="chartTab" class="tab-button active">Line Charts</button>
+          <button id="tableTab" class="tab-button">Tables</button>
+        </div>
+
+        <div id="chartsSection" class="charts-section">
+          <article class="chart-card">
+            <h3>DK1 - Difference Over Time</h3>
+            <canvas id="chartDk1"></canvas>
+          </article>
+          <article class="chart-card">
+            <h3>DK2 - Difference Over Time</h3>
+            <canvas id="chartDk2"></canvas>
+          </article>
+        </div>
+
+        <div id="tablesSection" class="split-tables hidden">
           <article class="table-card">
             <h3>DK1</h3>
             <div class="table-wrap">
@@ -109,17 +127,15 @@
     </main>
 
     <dialog id="settingsDialog" class="settings-dialog">
-      <h2>Folder Permissions</h2>
-      <p>Grant read access to both source roots. The app scans date + GUID subfolders automatically.</p>
+      <h2>Root Folder Access</h2>
+      <p>Grant read access to the \\fs61\ root folder. The app will automatically discover the required subfolders:</p>
+      <ul style="margin: 8px 0; padding-left: 20px; color: var(--text-soft); font-size: 0.9rem;">
+        <li>driftdata/Drift/Arkiv/CGMES/OFFLINE/ (for 2D SSH scenarios)</li>
+        <li>BizTalkFileShare/BTS2010/Common/Tracking/CGMA_TSO/ (for CGMA inhouse XML)</li>
+      </ul>
       <div class="settings-actions">
-        <button id="grantOfflineButton" class="btn btn-secondary">Grant OFFLINE Root</button>
-        <button id="grantCgmaButton" class="btn btn-secondary">Grant CGMA Root</button>
+        <button id="grantRootButton" class="btn btn-secondary">Grant Root Folder Access</button>
       </div>
-      <p class="small">
-        OFFLINE root expected: \\fs61\driftdata\Drift\Arkiv\CGMES\OFFLINE\
-        <br />
-        CGMA root expected: \\fs61\BizTalkFileShare\BTS2010\Common\Tracking\CGMA_TSO\
-      </p>
       <div class="dialog-footer">
         <button id="closeSettingsButton" class="btn btn-primary">Close</button>
       </div>

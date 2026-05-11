@@ -14,12 +14,19 @@ const el = {
   runButton: document.getElementById("runButton"),
   settingsDialog: document.getElementById("settingsDialog"),
   closeSettingsButton: document.getElementById("closeSettingsButton"),
-  grantOfflineButton: document.getElementById("grantOfflineButton"),
-  grantCgmaButton: document.getElementById("grantCgmaButton"),
+  grantRootButton: document.getElementById("grantRootButton"),
+  remountButton: document.getElementById("remountButton"),
   folderStatus: document.getElementById("folderStatus"),
   versionSelect: document.getElementById("versionSelect"),
   selectionInfo: document.getElementById("selectionInfo"),
   resultSummary: document.getElementById("resultSummary"),
+  tabsContainer: document.getElementById("tabsContainer"),
+  chartTab: document.getElementById("chartTab"),
+  tableTab: document.getElementById("tableTab"),
+  chartsSection: document.getElementById("chartsSection"),
+  tablesSection: document.getElementById("tablesSection"),
+  chartDk1: document.getElementById("chartDk1"),
+  chartDk2: document.getElementById("chartDk2"),
   resultBodyDk1: document.getElementById("resultBodyDk1"),
   resultBodyDk2: document.getElementById("resultBodyDk2"),
   debugLog: document.getElementById("debugLog"),
@@ -31,10 +38,13 @@ const el = {
 };
 
 const state = {
-  offlineRootHandle: null,
-  cgmaRootHandle: null,
+  rootHandle: null,
   discoveredIgmFiles: [],
   latestCgmaFileHandle: null,
+  comparisonData: null,
+  sortColumn: "timestamp",
+  sortAscending: true,
+  visualizationMode: "charts",
   initialized: false,
   busy: false,
 };
@@ -118,9 +128,13 @@ async function ensureReadPermission(handle) {
 }
 
 function setFolderStatus() {
-  const offline = state.offlineRootHandle ? `✓ ${state.offlineRootHandle.name}` : "✗ not set";
-  const cgma = state.cgmaRootHandle ? `✓ ${state.cgmaRootHandle.name}` : "✗ not set";
-  el.folderStatus.textContent = `OFFLINE root: ${offline}\nCGMA root: ${cgma}`;
+  if (state.rootHandle) {
+    el.folderStatus.textContent = `✓ ${state.rootHandle.name}\n(Single root with auto-discovery)`;
+    el.remountButton.style.display = "inline-block";
+  } else {
+    el.folderStatus.textContent = "✗ No root folder mounted yet";
+    el.remountButton.style.display = "none";
+  }
 }
 
 function setResultSummary(message) {
@@ -174,23 +188,39 @@ function fillVersionSelect(versions) {
   el.versionSelect.value = "latest";
 }
 
-async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
+async function findLatestIgmFolder(rootHandle, lookbackDays = 1) {
   lookbackDays = Math.min(lookbackDays, 1);
   const pattern = /^\d{8}T\d{4}Z_2D_(DKE|DKW)_SSH_\d{3}\.zip$/;
   let allMatches = [];
   let latestDateLabel = null;
 
-  debugLog.log(`[IGM Discovery] Searching OFFLINE root for 2D scenarios with lookback=${lookbackDays} days`, 'info');
+  debugLog.log(`[IGM Discovery] Searching OFFLINE subfolder for 2D scenarios with lookback=${lookbackDays} days`, 'info');
+  
+  // Navigate to OFFLINE subfolder: driftdata/Drift/Arkiv/CGMES/OFFLINE/
+  let offlineRoot;
+  try {
+    const driftdata = await rootHandle.getDirectoryHandle("driftdata");
+    const drift = await driftdata.getDirectoryHandle("Drift");
+    const arkiv = await drift.getDirectoryHandle("Arkiv");
+    const cgmes = await arkiv.getDirectoryHandle("CGMES");
+    offlineRoot = await cgmes.getDirectoryHandle("OFFLINE");
+    debugLog.log(`[IGM Discovery] ✓ Navigated to OFFLINE subfolder`, 'info');
+  } catch (err) {
+    const errorMsg = `Cannot navigate to OFFLINE subfolder: ${String(err.message || err)}`;
+    debugLog.log(errorMsg, 'error');
+    throw new Error(errorMsg);
+  }
+
   // Probe root handle to confirm visibility
   try {
     const rootEntries = [];
-    for await (const entry of offlineRootHandle.values()) {
+    for await (const entry of offlineRoot.values()) {
       rootEntries.push(`${entry.kind}:${entry.name}`);
       if (rootEntries.length >= 15) { rootEntries.push('...truncated'); break; }
     }
-    debugLog.log(`[IGM Discovery] Root handle children: ${rootEntries.length ? rootEntries.join(' | ') : '(empty or inaccessible)'}`, 'info');
+    debugLog.log(`[IGM Discovery] OFFLINE root children: ${rootEntries.length ? rootEntries.join(' | ') : '(empty or inaccessible)'}`, 'info');
   } catch (probeErr) {
-    debugLog.log(`[IGM Discovery] Cannot probe root handle: ${String(probeErr.message || probeErr)}`, 'error');
+    debugLog.log(`[IGM Discovery] Cannot probe OFFLINE root: ${String(probeErr.message || probeErr)}`, 'error');
   }
 
   // Search across the full lookback window to find latest available 2D SSH set.
@@ -204,7 +234,7 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
 
     let yearDir;
     try {
-      yearDir = await offlineRootHandle.getDirectoryHandle(y);
+      yearDir = await offlineRoot.getDirectoryHandle(y);
       debugLog.log(`[IGM Discovery] ✓ Year dir exists: ${y}`, 'info');
     } catch (err) {
       debugLog.log(`[IGM Discovery] ✗ Year dir missing: ${y} (${String(err.message || err)})`, 'warn');
@@ -292,7 +322,7 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
   }
 
   if (allMatches.length === 0) {
-    const errorMsg = `No 2D DKE/DKW SSH files found in the OFFLINE root within lookback range.`;
+    const errorMsg = `No 2D DKE/DKW SSH files found in the OFFLINE subfolder within lookback range.`;
     debugLog.log(errorMsg, 'error');
     throw new Error(errorMsg);
   }
@@ -306,11 +336,26 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
   };
 }
 
-async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 1) {
+async function findLatestCgmaXml(rootHandle, lookbackDays = 1) {
   lookbackDays = Math.min(lookbackDays, 1);
   let best = null;
 
-  debugLog.log(`[CGMA Discovery] Searching CGMA root for Inhouse XML with lookback=${lookbackDays} days`, 'info');
+  debugLog.log(`[CGMA Discovery] Searching CGMA subfolder for Inhouse XML with lookback=${lookbackDays} days`, 'info');
+
+  // Navigate to CGMA subfolder: BizTalkFileShare/BTS2010/Common/Tracking/CGMA_TSO/
+  let cgmaRoot;
+  try {
+    const bizTalk = await rootHandle.getDirectoryHandle("BizTalkFileShare");
+    const bts2010 = await bizTalk.getDirectoryHandle("BTS2010");
+    const common = await bts2010.getDirectoryHandle("Common");
+    const tracking = await common.getDirectoryHandle("Tracking");
+    cgmaRoot = await tracking.getDirectoryHandle("CGMA_TSO");
+    debugLog.log(`[CGMA Discovery] ✓ Navigated to CGMA_TSO subfolder`, 'info');
+  } catch (err) {
+    const errorMsg = `Cannot navigate to CGMA_TSO subfolder: ${String(err.message || err)}`;
+    debugLog.log(errorMsg, 'error');
+    throw new Error(errorMsg);
+  }
 
   for (let offset = 0; offset <= lookbackDays; offset += 1) {
     const date = new Date();
@@ -322,7 +367,7 @@ async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 1) {
 
     let yearDir;
     try {
-      yearDir = await cgmaRootHandle.getDirectoryHandle(y);
+      yearDir = await cgmaRoot.getDirectoryHandle(y);
       debugLog.log(`[CGMA Discovery] ✓ Year dir exists: ${y}`, 'info');
     } catch (err) {
       debugLog.log(`[CGMA Discovery] ✗ Year dir missing: ${y} (${String(err.message || err)})`, 'warn');
@@ -385,7 +430,7 @@ async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 1) {
   }
 
   if (!best) {
-    const errorMsg = `No Inhouse XML file found in CGMA root within lookback range. Searched ${lookbackDays} day folders.`;
+    const errorMsg = `No Inhouse XML file found in CGMA subfolder within lookback range. Searched ${lookbackDays} day folders.`;
     debugLog.log(errorMsg, 'error');
     throw new Error(errorMsg);
   }
@@ -397,11 +442,11 @@ async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 1) {
 
 async function scanSources() {
   debugLog.log(`Scanning sources...`);
-  const igm = await findLatestIgmFolder(state.offlineRootHandle);
+  const igm = await findLatestIgmFolder(state.rootHandle);
   debugLog.log(`Found IGM files: ${igm.files.length} in date ${igm.dateLabel}`);
   state.discoveredIgmFiles = igm.files;
 
-  const cgma = await findLatestCgmaXml(state.cgmaRootHandle);
+  const cgma = await findLatestCgmaXml(state.rootHandle);
   debugLog.log(`Found CGMA file: ${cgma.pathLabel}`);
   state.latestCgmaFileHandle = cgma.handle;
 
@@ -418,14 +463,27 @@ async function scanSources() {
   el.selectionInfo.textContent = `IGM date folder: ${igm.dateLabel} | CGMA file: ${cgma.pathLabel} | IGM files: ${igm.files.length}`;
 }
 
-function renderRows(rows) {
-  clearResults();
-  const sorted = [...rows].sort((a, b) => {
-    if (String(a.area) !== String(b.area)) {
-      return String(a.area).localeCompare(String(b.area));
+function sortRows(rows) {
+  const sorted = [...rows];
+  sorted.sort((a, b) => {
+    let aVal = a[state.sortColumn];
+    let bVal = b[state.sortColumn];
+    
+    if (typeof aVal === 'string') {
+      aVal = String(aVal).toLowerCase();
+      bVal = String(bVal).toLowerCase();
     }
-    return String(a.aligned_timestamp).localeCompare(String(b.aligned_timestamp));
+    
+    if (aVal < bVal) return state.sortAscending ? -1 : 1;
+    if (aVal > bVal) return state.sortAscending ? 1 : -1;
+    return 0;
   });
+  return sorted;
+}
+
+function renderTablesView(rows) {
+  clearResults();
+  const sorted = sortRows(rows);
 
   for (const row of sorted) {
     const tr = document.createElement("tr");
@@ -446,12 +504,126 @@ function renderRows(rows) {
       el.resultBodyDk2.appendChild(tr);
     }
   }
+
+  // Add sort handlers after rendering
+  if (window.addTableSortHandlers) {
+    window.addTableSortHandlers();
+  }
+}
+
+function renderChartsView(rows) {
+  clearResults();
+  
+  if (!window.Chart) {
+    debugLog.log("Chart.js library not loaded yet", 'warn');
+    return;
+  }
+
+  const sorted = sortRows(rows);
+  
+  // Separate by area
+  const dk1Rows = sorted.filter(r => r.area === "DK1");
+  const dk2Rows = sorted.filter(r => r.area === "DK2");
+
+  // Helper to get color based on status
+  const statusColors = {
+    "NORMAL": "#62d181",
+    "WARNING": "#f0bf52",
+    "ERROR": "#f1786d"
+  };
+
+  // Chart configuration
+  const chartConfig = {
+    type: 'line',
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          labels: { color: '#e8f6ff' }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#a4bfd0' },
+          grid: { color: 'rgba(167, 225, 255, 0.1)' }
+        },
+        y: {
+          ticks: { color: '#a4bfd0' },
+          grid: { color: 'rgba(167, 225, 255, 0.1)' },
+          title: { display: true, text: 'Difference (MW)', color: '#a4bfd0' }
+        }
+      }
+    }
+  };
+
+  // Render DK1 chart
+  if (dk1Rows.length > 0) {
+    const dk1Ctx = el.chartDk1.getContext('2d');
+    if (window.dk1Chart) window.dk1Chart.destroy();
+    window.dk1Chart = new Chart(dk1Ctx, {
+      ...chartConfig,
+      data: {
+        labels: dk1Rows.map(r => r.aligned_timestamp),
+        datasets: [{
+          label: 'Difference (SSH - CGMA)',
+          data: dk1Rows.map(r => r.difference_mw),
+          borderColor: '#4ad5c6',
+          backgroundColor: 'rgba(74, 213, 198, 0.1)',
+          tension: 0.4,
+          fill: true,
+          borderWidth: 2,
+          pointRadius: 4,
+          pointBackgroundColor: dk1Rows.map(r => statusColors[r.status] || '#4ad5c6'),
+          pointBorderColor: '#e8f6ff',
+          pointBorderWidth: 1
+        }]
+      }
+    });
+  }
+
+  // Render DK2 chart
+  if (dk2Rows.length > 0) {
+    const dk2Ctx = el.chartDk2.getContext('2d');
+    if (window.dk2Chart) window.dk2Chart.destroy();
+    window.dk2Chart = new Chart(dk2Ctx, {
+      ...chartConfig,
+      data: {
+        labels: dk2Rows.map(r => r.aligned_timestamp),
+        datasets: [{
+          label: 'Difference (SSH - CGMA)',
+          data: dk2Rows.map(r => r.difference_mw),
+          borderColor: '#6bb0ff',
+          backgroundColor: 'rgba(107, 176, 255, 0.1)',
+          tension: 0.4,
+          fill: true,
+          borderWidth: 2,
+          pointRadius: 4,
+          pointBackgroundColor: dk2Rows.map(r => statusColors[r.status] || '#6bb0ff'),
+          pointBorderColor: '#e8f6ff',
+          pointBorderWidth: 1
+        }]
+      }
+    });
+  }
+}
+
+function renderRows(rows) {
+  state.comparisonData = rows;
+  state.sortColumn = "aligned_timestamp";
+  state.sortAscending = true;
+  
+  if (state.visualizationMode === "charts") {
+    renderChartsView(rows);
+  } else {
+    renderTablesView(rows);
+  }
 }
 
 async function runComparison() {
   debugLog.log(`Starting comparison run...`, 'info');
-  if (!state.offlineRootHandle || !state.cgmaRootHandle) {
-    throw new Error("Please configure both folder permissions in Settings first.");
+  if (!state.rootHandle) {
+    throw new Error("Please mount the root folder in Settings first.");
   }
 
   setProgress("Scanning source folders...", 0.08);
@@ -535,49 +707,39 @@ async function logHandlePreview(handle, label) {
   }
 }
 
-async function grantOfflineRoot() {
-  debugLog.log(`Requesting OFFLINE root access...`, 'info');
+async function grantRootAccess() {
+  debugLog.log(`Requesting root folder access (\\fs61\)...`, 'info');
   const handle = await window.showDirectoryPicker({ mode: "read" });
-  debugLog.log(`OFFLINE root handle obtained`, 'info');
+  debugLog.log(`Root handle obtained`, 'info');
   if (!(await ensureReadPermission(handle))) {
-    throw new Error("Read permission denied for OFFLINE root.");
+    throw new Error("Read permission denied for root folder.");
   }
-  state.offlineRootHandle = handle;
-  await saveHandle("offlineRoot", handle);
+  state.rootHandle = handle;
+  await saveHandle("rootHandle", handle);
   setFolderStatus();
-  await logHandlePreview(handle, "OFFLINE root");
-  debugLog.log(`OFFLINE root saved: "${handle.name}" (key: offlineRoot)`, 'info');
+  await logHandlePreview(handle, "Root folder");
+  debugLog.log(`Root folder saved: "${handle.name}" (key: rootHandle)`, 'info');
 }
 
-async function grantCgmaRoot() {
-  debugLog.log(`Requesting CGMA root access...`, 'info');
-  const handle = await window.showDirectoryPicker({ mode: "read" });
-  debugLog.log(`CGMA root handle obtained`, 'info');
-  if (!(await ensureReadPermission(handle))) {
-    throw new Error("Read permission denied for CGMA root.");
+async function remountRoot() {
+  if (!state.rootHandle) {
+    throw new Error("No root folder to remount. Please grant access first.");
   }
-  state.cgmaRootHandle = handle;
-  await saveHandle("cgmaRoot", handle);
-  setFolderStatus();
-  await logHandlePreview(handle, "CGMA root");
-  debugLog.log(`CGMA root saved: "${handle.name}" (key: cgmaRoot)`, 'info');
+  debugLog.log(`Re-mounting root folder...`, 'info');
+  if (!(await ensureReadPermission(state.rootHandle))) {
+    throw new Error("Read permission not granted for mounted folder.");
+  }
+  debugLog.log(`Root folder re-mounted: "${state.rootHandle.name}"`, 'info');
 }
 
 async function restoreHandles() {
-  const offline = await loadHandle("offlineRoot");
-  const cgma = await loadHandle("cgmaRoot");
+  const root = await loadHandle("rootHandle");
 
-  if (offline && (await ensureReadPermission(offline))) {
-    state.offlineRootHandle = offline;
-    debugLog.log(`Restored OFFLINE root: "${offline.name}"`, 'info');
-  } else if (offline) {
-    debugLog.log(`OFFLINE root "${offline.name}" in IndexedDB but permission not granted`, 'warn');
-  }
-  if (cgma && (await ensureReadPermission(cgma))) {
-    state.cgmaRootHandle = cgma;
-    debugLog.log(`Restored CGMA root: "${cgma.name}"`, 'info');
-  } else if (cgma) {
-    debugLog.log(`CGMA root "${cgma.name}" in IndexedDB but permission not granted`, 'warn');
+  if (root && (await ensureReadPermission(root))) {
+    state.rootHandle = root;
+    debugLog.log(`Restored root folder: "${root.name}"`, 'info');
+  } else if (root) {
+    debugLog.log(`Root folder "${root.name}" in IndexedDB but permission not granted`, 'warn');
   }
   setFolderStatus();
 }
@@ -591,24 +753,24 @@ function bindUi() {
     el.settingsDialog.close();
   });
 
-  el.grantOfflineButton.addEventListener("click", async () => {
+  el.grantRootButton.addEventListener("click", async () => {
     try {
-      await grantOfflineRoot();
-      setResultSummary("OFFLINE root granted.");
+      await grantRootAccess();
+      setResultSummary("Root folder access granted. Ready to run comparison.");
     } catch (err) {
       const msg = String(err.message || err);
-      debugLog.log(`Error granting OFFLINE root: ${msg}`, 'error');
+      debugLog.log(`Error granting root access: ${msg}`, 'error');
       setResultSummary(msg);
     }
   });
 
-  el.grantCgmaButton.addEventListener("click", async () => {
+  el.remountButton.addEventListener("click", async () => {
     try {
-      await grantCgmaRoot();
-      setResultSummary("CGMA root granted.");
+      await remountRoot();
+      setResultSummary("Root folder re-mounted successfully.");
     } catch (err) {
       const msg = String(err.message || err);
-      debugLog.log(`Error granting CGMA root: ${msg}`, 'error');
+      debugLog.log(`Error re-mounting root: ${msg}`, 'error');
       setResultSummary(msg);
     }
   });
@@ -627,6 +789,63 @@ function bindUi() {
       setBusy(false, "Done", 1);
     }
   });
+
+  el.chartTab.addEventListener("click", () => {
+    state.visualizationMode = "charts";
+    el.chartTab.classList.add("active");
+    el.tableTab.classList.remove("active");
+    el.chartsSection.classList.remove("hidden");
+    el.tablesSection.classList.add("hidden");
+    if (state.comparisonData) {
+      renderChartsView(state.comparisonData);
+    }
+  });
+
+  el.tableTab.addEventListener("click", () => {
+    state.visualizationMode = "tables";
+    el.tableTab.classList.add("active");
+    el.chartTab.classList.remove("active");
+    el.tablesSection.classList.remove("hidden");
+    el.chartsSection.classList.add("hidden");
+    if (state.comparisonData) {
+      renderTablesView(state.comparisonData);
+    }
+  });
+
+  // Add table header click handlers for sorting
+  const addSortHandlers = () => {
+    const headers = document.querySelectorAll(".table-card th");
+    headers.forEach(th => {
+      th.style.cursor = "pointer";
+      th.style.userSelect = "none";
+      th.addEventListener("click", () => {
+        const columnMap = {
+          "Time (UTC)": "aligned_timestamp",
+          "Version": "ssh_version",
+          "IGM MW": "ssh_net_interchange_mw",
+          "CGMA MW": "cgma_net_position_mw",
+          "Diff MW": "difference_mw",
+          "Status": "status"
+        };
+        const newColumn = columnMap[th.textContent.trim()];
+        if (newColumn) {
+          if (state.sortColumn === newColumn) {
+            state.sortAscending = !state.sortAscending;
+          } else {
+            state.sortColumn = newColumn;
+            state.sortAscending = true;
+          }
+          if (state.comparisonData) {
+            renderTablesView(state.comparisonData);
+            addSortHandlers();
+          }
+        }
+      });
+    });
+  };
+
+  // Wrap addSortHandlers to be called after rendering
+  window.addTableSortHandlers = addSortHandlers;
 
   el.debugToggleButton.addEventListener("click", () => {
     const isCollapsed = el.debugPanel.classList.toggle("collapsed");
