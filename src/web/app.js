@@ -14,6 +14,7 @@ const el = {
   runButton: document.getElementById("runButton"),
   settingsDialog: document.getElementById("settingsDialog"),
   closeSettingsButton: document.getElementById("closeSettingsButton"),
+  restoreButton: document.getElementById("restoreButton"),
   grantOfflineButton: document.getElementById("grantOfflineButton"),
   grantCgmaButton: document.getElementById("grantCgmaButton"),
   folderStatus: document.getElementById("folderStatus"),
@@ -849,6 +850,23 @@ function bindUi() {
 
   el.closeSettingsButton.addEventListener("click", () => {
     el.settingsDialog.close();
+  });
+
+  el.restoreButton.addEventListener("click", async () => {
+    try {
+      setBusy(true, "Checking saved folders...");
+      await restoreHandles();
+      setResultSummary("✓ Folders restored and permissions verified.");
+      setTimeout(() => {
+        el.settingsDialog.close();
+      }, 500);
+    } catch (err) {
+      const msg = String(err.message || err);
+      debugLog.log(`Error restoring folders: ${msg}`, 'error');
+      setResultSummary(`Error: ${msg}`);
+    } finally {
+      setBusy(false);
+    }
   });
 
   el.grantOfflineButton.addEventListener("click", async () => {
