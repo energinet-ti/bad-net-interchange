@@ -33,9 +33,10 @@ body {
 }
 
 .app-shell {
-  max-width: 1320px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
-  padding: 26px;
+  padding: clamp(14px, 1.5vw, 30px);
   display: grid;
   gap: 14px;
 }
@@ -157,7 +158,7 @@ body {
   background: linear-gradient(170deg, rgba(20, 42, 58, 0.92), rgba(17, 34, 47, 0.92));
   border: 1px solid var(--line);
   border-radius: 16px;
-  padding: 14px;
+  padding: clamp(12px, 1vw, 18px);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
@@ -256,14 +257,14 @@ select {
   margin-top: 10px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: clamp(12px, 1vw, 18px);
 }
 
 .charts-section {
   margin-top: 10px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: clamp(12px, 1vw, 18px);
 }
 
 .charts-section.hidden {
@@ -284,7 +285,9 @@ select {
 }
 
 .chart-card canvas {
-  max-height: 320px;
+  width: 100% !important;
+  height: clamp(320px, 38vh, 620px) !important;
+  max-height: none;
 }
 
 .tabs-container {
@@ -340,14 +343,14 @@ th,
 td {
   text-align: left;
   border-bottom: 1px solid rgba(167, 225, 255, 0.16);
-  padding: 8px;
-  font-size: 0.88rem;
+  padding: 10px 11px;
+  font-size: 0.93rem;
   white-space: nowrap;
 }
 
 th {
   color: #b8d7ec;
-  font-size: 0.8rem;
+  font-size: 0.84rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   cursor: pointer;
@@ -453,6 +456,10 @@ th {
     grid-template-columns: 1fr;
   }
 
+  .chart-card canvas {
+    height: clamp(260px, 42vh, 460px) !important;
+  }
+
   .actions {
     width: 100%;
   }
@@ -468,5 +475,34 @@ th {
   .output-toolbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (min-width: 1800px) {
+  .app-shell {
+    padding: 20px 2.2vw 26px;
+  }
+
+  .hero h1 {
+    font-size: 2.05rem;
+  }
+
+  .subtitle {
+    font-size: 1rem;
+  }
+
+  .chart-card h3,
+  .table-card h3 {
+    font-size: 1.08rem;
+  }
+
+  th,
+  td {
+    padding: 12px 13px;
+    font-size: 0.98rem;
+  }
+
+  th {
+    font-size: 0.87rem;
   }
 }

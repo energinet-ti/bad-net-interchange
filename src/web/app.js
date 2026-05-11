@@ -630,7 +630,7 @@ function renderDiffChartsView(rows) {
     type: 'line',
     options: {
       responsive: true,
-      maintainAspectRatio: true,
+      maintainAspectRatio: false,
       plugins: {
         legend: {
           labels: { color: '#e8f6ff' }
@@ -720,7 +720,7 @@ function renderCompareChartsView(rows) {
     type: 'line',
     options: {
       responsive: true,
-      maintainAspectRatio: true,
+      maintainAspectRatio: false,
       plugins: {
         legend: {
           labels: { color: '#e8f6ff' }
