@@ -62,18 +62,30 @@
         <div id="resultSummary" class="small">No comparison run yet.</div>
         
         <div class="tabs-container" id="tabsContainer">
-          <button id="chartTab" class="tab-button active">Line Charts</button>
+          <button id="diffTab" class="tab-button active">Diff</button>
+          <button id="compareTab" class="tab-button">Compare</button>
           <button id="tableTab" class="tab-button">Tables</button>
         </div>
 
-        <div id="chartsSection" class="charts-section">
+        <div id="diffSection" class="charts-section">
           <article class="chart-card">
             <h3>DK1 - Difference Over Time</h3>
-            <canvas id="chartDk1"></canvas>
+            <canvas id="diffChartDk1"></canvas>
           </article>
           <article class="chart-card">
             <h3>DK2 - Difference Over Time</h3>
-            <canvas id="chartDk2"></canvas>
+            <canvas id="diffChartDk2"></canvas>
+          </article>
+        </div>
+
+        <div id="compareSection" class="charts-section hidden">
+          <article class="chart-card">
+            <h3>DK1 - IGM vs CGMA Comparison</h3>
+            <canvas id="compareChartDk1"></canvas>
+          </article>
+          <article class="chart-card">
+            <h3>DK2 - IGM vs CGMA Comparison</h3>
+            <canvas id="compareChartDk2"></canvas>
           </article>
         </div>
 

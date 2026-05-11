@@ -21,12 +21,16 @@ const el = {
   selectionInfo: document.getElementById("selectionInfo"),
   resultSummary: document.getElementById("resultSummary"),
   tabsContainer: document.getElementById("tabsContainer"),
-  chartTab: document.getElementById("chartTab"),
+  diffTab: document.getElementById("diffTab"),
+  compareTab: document.getElementById("compareTab"),
   tableTab: document.getElementById("tableTab"),
-  chartsSection: document.getElementById("chartsSection"),
+  diffSection: document.getElementById("diffSection"),
+  compareSection: document.getElementById("compareSection"),
   tablesSection: document.getElementById("tablesSection"),
-  chartDk1: document.getElementById("chartDk1"),
-  chartDk2: document.getElementById("chartDk2"),
+  diffChartDk1: document.getElementById("diffChartDk1"),
+  diffChartDk2: document.getElementById("diffChartDk2"),
+  compareChartDk1: document.getElementById("compareChartDk1"),
+  compareChartDk2: document.getElementById("compareChartDk2"),
   resultBodyDk1: document.getElementById("resultBodyDk1"),
   resultBodyDk2: document.getElementById("resultBodyDk2"),
   debugLog: document.getElementById("debugLog"),
@@ -45,7 +49,7 @@ const state = {
   comparisonData: null,
   sortColumn: "aligned_timestamp",
   sortAscending: true,
-  visualizationMode: "charts",
+  visualizationMode: "diff",
   initialized: false,
   busy: false,
 };
@@ -477,7 +481,7 @@ function renderTablesView(rows) {
   }
 }
 
-function renderChartsView(rows) {
+function renderDiffChartsView(rows) {
   clearResults();
   
   if (!window.Chart) {
@@ -525,9 +529,9 @@ function renderChartsView(rows) {
 
   // Render DK1 chart
   if (dk1Rows.length > 0) {
-    const dk1Ctx = el.chartDk1.getContext('2d');
-    if (window.dk1Chart) window.dk1Chart.destroy();
-    window.dk1Chart = new Chart(dk1Ctx, {
+    const dk1Ctx = el.diffChartDk1.getContext('2d');
+    if (window.diffDk1Chart) window.diffDk1Chart.destroy();
+    window.diffDk1Chart = new Chart(dk1Ctx, {
       ...chartConfig,
       data: {
         labels: dk1Rows.map(r => r.aligned_timestamp),
@@ -550,9 +554,9 @@ function renderChartsView(rows) {
 
   // Render DK2 chart
   if (dk2Rows.length > 0) {
-    const dk2Ctx = el.chartDk2.getContext('2d');
-    if (window.dk2Chart) window.dk2Chart.destroy();
-    window.dk2Chart = new Chart(dk2Ctx, {
+    const dk2Ctx = el.diffChartDk2.getContext('2d');
+    if (window.diffDk2Chart) window.diffDk2Chart.destroy();
+    window.diffDk2Chart = new Chart(dk2Ctx, {
       ...chartConfig,
       data: {
         labels: dk2Rows.map(r => r.aligned_timestamp),
@@ -574,13 +578,131 @@ function renderChartsView(rows) {
   }
 }
 
+function renderCompareChartsView(rows) {
+  clearResults();
+  
+  if (!window.Chart) {
+    debugLog.log("Chart.js library not loaded yet", 'warn');
+    return;
+  }
+
+  const sorted = sortRows(rows);
+  
+  // Separate by area
+  const dk1Rows = sorted.filter(r => r.area === "DK1");
+  const dk2Rows = sorted.filter(r => r.area === "DK2");
+
+  // Chart configuration
+  const chartConfig = {
+    type: 'line',
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          labels: { color: '#e8f6ff' }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#a4bfd0' },
+          grid: { color: 'rgba(167, 225, 255, 0.1)' }
+        },
+        y: {
+          ticks: { color: '#a4bfd0' },
+          grid: { color: 'rgba(167, 225, 255, 0.1)' },
+          title: { display: true, text: 'MW', color: '#a4bfd0' }
+        }
+      }
+    }
+  };
+
+  // Render DK1 chart
+  if (dk1Rows.length > 0) {
+    const dk1Ctx = el.compareChartDk1.getContext('2d');
+    if (window.compareDk1Chart) window.compareDk1Chart.destroy();
+    window.compareDk1Chart = new Chart(dk1Ctx, {
+      ...chartConfig,
+      data: {
+        labels: dk1Rows.map(r => r.aligned_timestamp),
+        datasets: [
+          {
+            label: 'IGM (SSH)',
+            data: dk1Rows.map(r => r.ssh_net_interchange_mw),
+            borderColor: '#4ad5c6',
+            backgroundColor: 'rgba(74, 213, 198, 0.08)',
+            tension: 0.4,
+            fill: true,
+            borderWidth: 2,
+            pointRadius: 3,
+            pointBorderColor: '#e8f6ff',
+            pointBorderWidth: 1
+          },
+          {
+            label: 'CGMA',
+            data: dk1Rows.map(r => r.cgma_net_position_mw),
+            borderColor: '#f0bf52',
+            backgroundColor: 'rgba(240, 191, 82, 0.08)',
+            tension: 0.4,
+            fill: true,
+            borderWidth: 2,
+            pointRadius: 3,
+            pointBorderColor: '#e8f6ff',
+            pointBorderWidth: 1
+          }
+        ]
+      }
+    });
+  }
+
+  // Render DK2 chart
+  if (dk2Rows.length > 0) {
+    const dk2Ctx = el.compareChartDk2.getContext('2d');
+    if (window.compareDk2Chart) window.compareDk2Chart.destroy();
+    window.compareDk2Chart = new Chart(dk2Ctx, {
+      ...chartConfig,
+      data: {
+        labels: dk2Rows.map(r => r.aligned_timestamp),
+        datasets: [
+          {
+            label: 'IGM (SSH)',
+            data: dk2Rows.map(r => r.ssh_net_interchange_mw),
+            borderColor: '#6bb0ff',
+            backgroundColor: 'rgba(107, 176, 255, 0.08)',
+            tension: 0.4,
+            fill: true,
+            borderWidth: 2,
+            pointRadius: 3,
+            pointBorderColor: '#e8f6ff',
+            pointBorderWidth: 1
+          },
+          {
+            label: 'CGMA',
+            data: dk2Rows.map(r => r.cgma_net_position_mw),
+            borderColor: '#f0bf52',
+            backgroundColor: 'rgba(240, 191, 82, 0.08)',
+            tension: 0.4,
+            fill: true,
+            borderWidth: 2,
+            pointRadius: 3,
+            pointBorderColor: '#e8f6ff',
+            pointBorderWidth: 1
+          }
+        ]
+      }
+    });
+  }
+}
+
 function renderRows(rows) {
   state.comparisonData = rows;
   state.sortColumn = "aligned_timestamp";
   state.sortAscending = true;
   
-  if (state.visualizationMode === "charts") {
-    renderChartsView(rows);
+  if (state.visualizationMode === "diff") {
+    renderDiffChartsView(rows);
+  } else if (state.visualizationMode === "compare") {
+    renderCompareChartsView(rows);
   } else {
     renderTablesView(rows);
   }
@@ -766,23 +888,40 @@ function bindUi() {
     }
   });
 
-  el.chartTab.addEventListener("click", () => {
-    state.visualizationMode = "charts";
-    el.chartTab.classList.add("active");
+  el.diffTab.addEventListener("click", () => {
+    state.visualizationMode = "diff";
+    el.diffTab.classList.add("active");
+    el.compareTab.classList.remove("active");
     el.tableTab.classList.remove("active");
-    el.chartsSection.classList.remove("hidden");
+    el.diffSection.classList.remove("hidden");
+    el.compareSection.classList.add("hidden");
     el.tablesSection.classList.add("hidden");
     if (state.comparisonData) {
-      renderChartsView(state.comparisonData);
+      renderDiffChartsView(state.comparisonData);
+    }
+  });
+
+  el.compareTab.addEventListener("click", () => {
+    state.visualizationMode = "compare";
+    el.compareTab.classList.add("active");
+    el.diffTab.classList.remove("active");
+    el.tableTab.classList.remove("active");
+    el.compareSection.classList.remove("hidden");
+    el.diffSection.classList.add("hidden");
+    el.tablesSection.classList.add("hidden");
+    if (state.comparisonData) {
+      renderCompareChartsView(state.comparisonData);
     }
   });
 
   el.tableTab.addEventListener("click", () => {
     state.visualizationMode = "tables";
     el.tableTab.classList.add("active");
-    el.chartTab.classList.remove("active");
+    el.diffTab.classList.remove("active");
+    el.compareTab.classList.remove("active");
     el.tablesSection.classList.remove("hidden");
-    el.chartsSection.classList.add("hidden");
+    el.diffSection.classList.add("hidden");
+    el.compareSection.classList.add("hidden");
     if (state.comparisonData) {
       renderTablesView(state.comparisonData);
     }
