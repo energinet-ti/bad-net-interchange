@@ -8,16 +8,23 @@ import initWasm, {
 const DB_NAME = "cgma-igm-permissions";
 const DB_VERSION = 1;
 const STORE_NAME = "handles";
+const DEBUG_STORAGE_KEY = "cgma-igm-debug-enabled";
 
 const el = {
+  mainRestoreButton: document.getElementById("mainRestoreButton"),
   settingsButton: document.getElementById("settingsButton"),
   runButton: document.getElementById("runButton"),
   settingsDialog: document.getElementById("settingsDialog"),
   closeSettingsButton: document.getElementById("closeSettingsButton"),
-  restoreButton: document.getElementById("restoreButton"),
   grantOfflineButton: document.getElementById("grantOfflineButton"),
   grantCgmaButton: document.getElementById("grantCgmaButton"),
-  folderStatus: document.getElementById("folderStatus"),
+  offlineStatusPill: document.getElementById("offlineStatusPill"),
+  cgmaStatusPill: document.getElementById("cgmaStatusPill"),
+  copyOfflinePathButton: document.getElementById("copyOfflinePathButton"),
+  copyCgmaPathButton: document.getElementById("copyCgmaPathButton"),
+  offlinePathInput: document.getElementById("offlinePathInput"),
+  cgmaPathInput: document.getElementById("cgmaPathInput"),
+  debugEnabledCheckbox: document.getElementById("debugEnabledCheckbox"),
   versionSelect: document.getElementById("versionSelect"),
   selectionInfo: document.getElementById("selectionInfo"),
   resultSummary: document.getElementById("resultSummary"),
@@ -34,9 +41,6 @@ const el = {
   compareChartDk2: document.getElementById("compareChartDk2"),
   resultBodyDk1: document.getElementById("resultBodyDk1"),
   resultBodyDk2: document.getElementById("resultBodyDk2"),
-  debugLog: document.getElementById("debugLog"),
-  debugPanel: document.getElementById("debugPanel"),
-  debugToggleButton: document.getElementById("debugToggleButton"),
   loaderCard: document.getElementById("loaderCard"),
   progressFill: document.getElementById("progressFill"),
   progressText: document.getElementById("progressText"),
@@ -45,37 +49,55 @@ const el = {
 const state = {
   offlineRootHandle: null,
   cgmaRootHandle: null,
+  hasStoredHandles: false,
   discoveredIgmFiles: [],
   latestCgmaFileHandle: null,
   comparisonData: null,
   sortColumn: "aligned_timestamp",
   sortAscending: true,
   visualizationMode: "diff",
+  debugEnabled: false,
   initialized: false,
   busy: false,
 };
 
 const debugLog = {
-  entries: [],
   log(message, level = 'info') {
+    if (!state.debugEnabled) {
+      return;
+    }
     const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
     const entry = `[${timestamp}] ${message}`;
-    this.entries.push({ message: entry, level });
-    if (this.entries.length > 100) {
-      this.entries.shift();
+    if (level === 'error') {
+      console.error(entry);
+    } else if (level === 'warn') {
+      console.warn(entry);
+    } else {
+      console.log(entry);
     }
-    this.render();
-    console.log(`[${level.toUpperCase()}]`, message);
-  },
-  render() {
-    const container = el.debugLog;
-    if (!container) return;
-    container.innerHTML = this.entries
-      .map(e => `<div class="debug-log-entry debug-log-${e.level}">${e.message}</div>`)
-      .join('');
-    container.scrollTop = container.scrollHeight;
   },
 };
+
+function loadDebugSetting() {
+  try {
+    state.debugEnabled = localStorage.getItem(DEBUG_STORAGE_KEY) === "1";
+  } catch (_err) {
+    state.debugEnabled = false;
+  }
+
+  if (el.debugEnabledCheckbox) {
+    el.debugEnabledCheckbox.checked = state.debugEnabled;
+  }
+}
+
+function saveDebugSetting(enabled) {
+  state.debugEnabled = Boolean(enabled);
+  try {
+    localStorage.setItem(DEBUG_STORAGE_KEY, state.debugEnabled ? "1" : "0");
+  } catch (_err) {
+    // Ignore storage failures; runtime toggle still works for current session.
+  }
+}
 
 function toYmd(date, zeroPad) {
   const y = date.getUTCFullYear();
@@ -122,7 +144,7 @@ async function loadHandle(key) {
   });
 }
 
-async function ensureReadPermission(handle) {
+async function ensureReadPermission(handle, requestIfNeeded = true) {
   if (!handle) {
     return false;
   }
@@ -130,13 +152,49 @@ async function ensureReadPermission(handle) {
   if ((await handle.queryPermission(opts)) === "granted") {
     return true;
   }
+  if (!requestIfNeeded) {
+    return false;
+  }
   return (await handle.requestPermission(opts)) === "granted";
 }
 
 function setFolderStatus() {
-  const offline = state.offlineRootHandle ? `✓ ${state.offlineRootHandle.name}` : "✗ not set";
-  const cgma = state.cgmaRootHandle ? `✓ ${state.cgmaRootHandle.name}` : "✗ not set";
-  el.folderStatus.textContent = `OFFLINE root: ${offline}\nCGMA root: ${cgma}`;
+  const offlineGranted = Boolean(state.offlineRootHandle);
+  const cgmaGranted = Boolean(state.cgmaRootHandle);
+
+  if (el.offlineStatusPill) {
+    el.offlineStatusPill.className = `status-pill ${offlineGranted ? "status-ok" : "status-missing"}`;
+    el.offlineStatusPill.textContent = offlineGranted
+      ? `OFFLINE granted (${state.offlineRootHandle.name})`
+      : "OFFLINE not granted";
+  }
+
+  if (el.cgmaStatusPill) {
+    el.cgmaStatusPill.className = `status-pill ${cgmaGranted ? "status-ok" : "status-missing"}`;
+    el.cgmaStatusPill.textContent = cgmaGranted
+      ? `CGMA granted (${state.cgmaRootHandle.name})`
+      : "CGMA not granted";
+  }
+}
+
+function setMainRestoreVisibility() {
+  if (!el.mainRestoreButton) {
+    return;
+  }
+  el.mainRestoreButton.classList.toggle("hidden", !state.hasStoredHandles);
+}
+
+async function refreshStoredHandlePresence() {
+  const [offline, cgma] = await Promise.all([
+    loadHandle("offlineRoot"),
+    loadHandle("cgmaRoot"),
+  ]);
+  state.hasStoredHandles = Boolean(offline && cgma);
+  setMainRestoreVisibility();
+}
+
+function getDiffMagnitude(row) {
+  return Math.abs(Number(row.difference_mw) || 0);
 }
 
 function setResultSummary(message) {
@@ -437,8 +495,10 @@ async function scanSources() {
 function sortRows(rows) {
   const sorted = [...rows];
   sorted.sort((a, b) => {
-    let aVal = a[state.sortColumn];
-    let bVal = b[state.sortColumn];
+    const aSource = state.sortColumn === "difference_mw" ? getDiffMagnitude(a) : a[state.sortColumn];
+    const bSource = state.sortColumn === "difference_mw" ? getDiffMagnitude(b) : b[state.sortColumn];
+    let aVal = aSource;
+    let bVal = bSource;
     
     if (typeof aVal === 'string') {
       aVal = String(aVal).toLowerCase();
@@ -465,7 +525,7 @@ function renderTablesView(rows) {
       <td>${row.ssh_version}</td>
       <td>${Number(row.ssh_net_interchange_mw).toFixed(3)}</td>
       <td>${Number(row.cgma_net_position_mw).toFixed(3)}</td>
-      <td>${Number(row.difference_mw).toFixed(3)}</td>
+      <td>${getDiffMagnitude(row).toFixed(3)}</td>
       <td class="${statusClass}">${row.status}</td>
     `;
 
@@ -476,10 +536,6 @@ function renderTablesView(rows) {
     }
   }
 
-  // Add sort handlers after rendering
-  if (window.addTableSortHandlers) {
-    window.addTableSortHandlers();
-  }
 }
 
 function renderDiffChartsView(rows) {
@@ -538,7 +594,7 @@ function renderDiffChartsView(rows) {
         labels: dk1Rows.map(r => r.aligned_timestamp),
         datasets: [{
           label: 'Difference (SSH - CGMA)',
-          data: dk1Rows.map(r => r.difference_mw),
+          data: dk1Rows.map(r => getDiffMagnitude(r)),
           borderColor: '#4ad5c6',
           backgroundColor: 'rgba(74, 213, 198, 0.1)',
           tension: 0.4,
@@ -563,7 +619,7 @@ function renderDiffChartsView(rows) {
         labels: dk2Rows.map(r => r.aligned_timestamp),
         datasets: [{
           label: 'Difference (SSH - CGMA)',
-          data: dk2Rows.map(r => r.difference_mw),
+          data: dk2Rows.map(r => getDiffMagnitude(r)),
           borderColor: '#6bb0ff',
           backgroundColor: 'rgba(107, 176, 255, 0.1)',
           tension: 0.4,
@@ -805,6 +861,7 @@ async function grantOfflineRoot() {
   }
   state.offlineRootHandle = handle;
   await saveHandle("offlineRoot", handle);
+  await refreshStoredHandlePresence();
   setFolderStatus();
   await logHandlePreview(handle, "OFFLINE root");
   debugLog.log(`OFFLINE root saved: "${handle.name}" (key: offlineRoot)`, 'info');
@@ -819,31 +876,89 @@ async function grantCgmaRoot() {
   }
   state.cgmaRootHandle = handle;
   await saveHandle("cgmaRoot", handle);
+  await refreshStoredHandlePresence();
   setFolderStatus();
   await logHandlePreview(handle, "CGMA root");
   debugLog.log(`CGMA root saved: "${handle.name}" (key: cgmaRoot)`, 'info');
 }
 
-async function restoreHandles() {
+async function restoreHandles(requestPermissions = false) {
   const offline = await loadHandle("offlineRoot");
   const cgma = await loadHandle("cgmaRoot");
+  await refreshStoredHandlePresence();
 
-  if (offline && (await ensureReadPermission(offline))) {
+  if (offline && (await ensureReadPermission(offline, requestPermissions))) {
     state.offlineRootHandle = offline;
     debugLog.log(`Restored OFFLINE root: "${offline.name}"`, 'info');
   } else if (offline) {
+    state.offlineRootHandle = null;
     debugLog.log(`OFFLINE root "${offline.name}" in IndexedDB but permission not granted`, 'warn');
+  } else {
+    state.offlineRootHandle = null;
   }
-  if (cgma && (await ensureReadPermission(cgma))) {
+  if (cgma && (await ensureReadPermission(cgma, requestPermissions))) {
     state.cgmaRootHandle = cgma;
     debugLog.log(`Restored CGMA root: "${cgma.name}"`, 'info');
   } else if (cgma) {
+    state.cgmaRootHandle = null;
     debugLog.log(`CGMA root "${cgma.name}" in IndexedDB but permission not granted`, 'warn');
+  } else {
+    state.cgmaRootHandle = null;
   }
+
   setFolderStatus();
+
+  return {
+    offlineRestored: Boolean(state.offlineRootHandle),
+    cgmaRestored: Boolean(state.cgmaRootHandle),
+  };
+}
+
+async function copyPathFromInput(inputEl, label) {
+  if (!inputEl) {
+    return;
+  }
+  const text = inputEl.value;
+  try {
+    await navigator.clipboard.writeText(text);
+    setResultSummary(`${label} path copied to clipboard.`);
+  } catch (_err) {
+    inputEl.focus();
+    inputEl.select();
+    setResultSummary(`Clipboard permission denied. ${label} path selected for manual copy.`);
+  }
+}
+
+async function regrantStoredFolders() {
+  if (!state.hasStoredHandles) {
+    setResultSummary("No saved folders to re-grant yet. Use Settings to grant both roots once.");
+    return;
+  }
+
+  setBusy(true, "Re-granting saved folder permissions...");
+  try {
+    const restored = await restoreHandles(true);
+    if (restored.offlineRestored && restored.cgmaRestored) {
+      setResultSummary("Folders re-granted successfully.");
+    } else {
+      setResultSummary("Could not re-grant one or both folders. Use Settings to grant manually.");
+    }
+  } finally {
+    setBusy(false);
+  }
 }
 
 function bindUi() {
+  el.mainRestoreButton.addEventListener("click", async () => {
+    try {
+      await regrantStoredFolders();
+    } catch (err) {
+      const msg = String(err.message || err);
+      debugLog.log(`Error re-granting folders: ${msg}`, 'error');
+      setResultSummary(msg);
+    }
+  });
+
   el.settingsButton.addEventListener("click", () => {
     el.settingsDialog.showModal();
   });
@@ -852,21 +967,29 @@ function bindUi() {
     el.settingsDialog.close();
   });
 
-  el.restoreButton.addEventListener("click", async () => {
-    try {
-      setBusy(true, "Checking saved folders...");
-      await restoreHandles();
-      setResultSummary("✓ Folders restored and permissions verified.");
-      setTimeout(() => {
-        el.settingsDialog.close();
-      }, 500);
-    } catch (err) {
-      const msg = String(err.message || err);
-      debugLog.log(`Error restoring folders: ${msg}`, 'error');
-      setResultSummary(`Error: ${msg}`);
-    } finally {
-      setBusy(false);
+  el.debugEnabledCheckbox.addEventListener("change", (event) => {
+    saveDebugSetting(event.target.checked);
+    setResultSummary(state.debugEnabled ? "Debug logging enabled (browser console)." : "Debug logging disabled.");
+  });
+
+  el.settingsDialog.addEventListener("click", (event) => {
+    const rect = el.settingsDialog.getBoundingClientRect();
+    const inside =
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom;
+    if (!inside) {
+      el.settingsDialog.close();
     }
+  });
+
+  el.copyOfflinePathButton.addEventListener("click", async () => {
+    await copyPathFromInput(el.offlinePathInput, "OFFLINE");
+  });
+
+  el.copyCgmaPathButton.addEventListener("click", async () => {
+    await copyPathFromInput(el.cgmaPathInput, "CGMA");
   });
 
   el.grantOfflineButton.addEventListener("click", async () => {
@@ -945,55 +1068,40 @@ function bindUi() {
     }
   });
 
-  // Add table header click handlers for sorting
-  const addSortHandlers = () => {
-    const headers = document.querySelectorAll(".table-card th");
-    headers.forEach(th => {
-      th.style.cursor = "pointer";
-      th.style.userSelect = "none";
-      th.addEventListener("click", () => {
-        const columnMap = {
-          "Time (UTC)": "aligned_timestamp",
-          "Version": "ssh_version",
-          "IGM MW": "ssh_net_interchange_mw",
-          "CGMA MW": "cgma_net_position_mw",
-          "Diff MW": "difference_mw",
-          "Status": "status"
-        };
-        const newColumn = columnMap[th.textContent.trim()];
-        if (newColumn) {
-          if (state.sortColumn === newColumn) {
-            state.sortAscending = !state.sortAscending;
-          } else {
-            state.sortColumn = newColumn;
-            state.sortAscending = true;
-          }
-          if (state.comparisonData) {
-            renderTablesView(state.comparisonData);
-            addSortHandlers();
-          }
-        }
-      });
-    });
-  };
+  el.tablesSection.addEventListener("click", (event) => {
+    const th = event.target.closest("th[data-sort]");
+    if (!th) {
+      return;
+    }
 
-  // Wrap addSortHandlers to be called after rendering
-  window.addTableSortHandlers = addSortHandlers;
+    const newColumn = th.dataset.sort;
+    if (!newColumn) {
+      return;
+    }
 
-  el.debugToggleButton.addEventListener("click", () => {
-    const isCollapsed = el.debugPanel.classList.toggle("collapsed");
-    el.debugToggleButton.textContent = isCollapsed ? "Show Debug" : "Hide Debug";
+    if (state.sortColumn === newColumn) {
+      state.sortAscending = !state.sortAscending;
+    } else {
+      state.sortColumn = newColumn;
+      state.sortAscending = true;
+    }
+
+    if (state.comparisonData) {
+      renderTablesView(state.comparisonData);
+    }
   });
+
 }
 
 async function main() {
+  loadDebugSetting();
   setBusy(false, "Ready", 0);
   debugLog.log(`Initializing app...`, 'info');
   await initWasm();
   debugLog.log(`WASM initialized`, 'info');
   setup_panic_hook();
   bindUi();
-  await restoreHandles();
+  await restoreHandles(false);
   state.initialized = true;
   debugLog.log(`App ready`, 'info');
   setResultSummary("Ready. Open Settings and grant folder access to run comparison.");

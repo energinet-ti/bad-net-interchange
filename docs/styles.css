@@ -88,6 +88,36 @@ body {
   max-width: 72ch;
 }
 
+.folder-status-inline {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.status-ok {
+  color: #052b15;
+  border-color: rgba(98, 209, 129, 0.55);
+  background: linear-gradient(120deg, rgba(98, 209, 129, 0.95), rgba(74, 213, 198, 0.9));
+}
+
+.status-missing {
+  color: #ffd7d2;
+  border-color: rgba(241, 120, 109, 0.45);
+  background: linear-gradient(120deg, rgba(111, 36, 31, 0.7), rgba(84, 25, 22, 0.66));
+}
+
 .actions {
   display: flex;
   gap: 10px;
@@ -129,12 +159,6 @@ body {
   border-radius: 16px;
   padding: 14px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
 }
 
 .loader-card {
@@ -191,22 +215,24 @@ body {
   display: none !important;
 }
 
-.copy-box {
-  width: 100%;
-  min-height: 92px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: #08131c;
-  color: var(--text);
-  padding: 10px;
-  font-family: "IBM Plex Mono", Consolas, monospace;
-}
-
 .field-row {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.output-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.compact-row {
+  margin-bottom: 0;
 }
 
 select {
@@ -324,6 +350,8 @@ th {
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
 }
 
 .status-normal {
@@ -339,18 +367,73 @@ th {
 }
 
 .settings-dialog {
-  width: min(620px, 92vw);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #0e1d2a;
+  width: min(760px, 92vw);
+  border: 1px solid rgba(167, 225, 255, 0.4);
+  border-radius: 18px;
+  padding: 18px;
+  background: linear-gradient(170deg, rgba(18, 40, 58, 0.98), rgba(13, 28, 41, 0.98));
   color: var(--text);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+.settings-dialog::backdrop {
+  background: rgba(5, 12, 18, 0.72);
+  backdrop-filter: blur(3px);
 }
 
 .settings-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin: 12px 0;
+  margin: 14px 0 16px;
+}
+
+.settings-toggle {
+  margin-top: 10px;
+  margin-bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+.settings-toggle input {
+  width: 16px;
+  height: 16px;
+}
+
+.path-list {
+  display: grid;
+  gap: 12px;
+}
+
+.path-item {
+  background: rgba(6, 16, 24, 0.62);
+  border: 1px solid rgba(167, 225, 255, 0.2);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.path-row {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.path-input {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid rgba(167, 225, 255, 0.3);
+  background: #091722;
+  color: var(--text);
+  padding: 8px 10px;
+}
+
+.btn-small {
+  padding: 8px 12px;
+  border-radius: 10px;
 }
 
 .dialog-footer {
@@ -359,64 +442,12 @@ th {
   margin-top: 12px;
 }
 
-.debug-panel {
-  transition: all 160ms ease;
-}
-
-.debug-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-.debug-panel.collapsed .debug-console {
-  display: none;
-}
-
-.debug-console {
-  margin-top: 10px;
-  background: #071018;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px;
-  font-family: "IBM Plex Mono", Consolas, monospace;
-  font-size: 0.82rem;
-  max-height: 260px;
-  overflow-y: auto;
-  color: var(--text-soft);
-}
-
-.debug-log-entry {
-  margin: 2px 0;
-  padding: 2px 4px;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.debug-log-info {
-  color: #56cfd0;
-}
-
-.debug-log-success {
-  color: var(--good);
-}
-
-.debug-log-warn {
-  color: var(--warn);
-}
-
-.debug-log-error {
-  color: var(--bad);
-}
-
 @media (max-width: 980px) {
   .hero {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .status-grid,
   .split-tables,
   .charts-section {
     grid-template-columns: 1fr;
@@ -428,5 +459,14 @@ th {
 
   .btn {
     width: 100%;
+  }
+
+  .path-row {
+    grid-template-columns: 1fr;
+  }
+
+  .output-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
