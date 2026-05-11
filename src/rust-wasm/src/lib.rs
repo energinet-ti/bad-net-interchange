@@ -9,6 +9,7 @@ use zip::ZipArchive;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IgmRecord {
     pub ssh_timestamp: String,
+    pub ssh_created: String,
     pub aligned_timestamp: String,
     pub area: String,
     pub ssh_version: String,
@@ -26,6 +27,7 @@ pub struct CgmaEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComparisonRow {
     pub ssh_timestamp: String,
+    pub ssh_created: String,
     pub aligned_timestamp: String,
     pub area: String,
     pub ssh_version: String,
@@ -142,6 +144,13 @@ pub fn extract_igm_record(file_name: String, zip_bytes: &[u8]) -> Result<JsValue
     let ssh_timestamp = normalize_timestamp(scenario_time_raw)
         .ok_or_else(|| JsValue::from_str("Invalid scenario timestamp format"))?;
 
+    let ssh_created = doc
+        .descendants()
+        .find(|n| n.is_element() && n.tag_name().name() == "Model.created")
+        .and_then(|n| n.text())
+        .map(|v| v.trim().to_string())
+        .ok_or_else(|| JsValue::from_str("Model.created not found in SSH XML"))?;
+
     let aligned_timestamp = truncate_hour(&ssh_timestamp)
         .ok_or_else(|| JsValue::from_str("Failed to align SSH timestamp"))?;
 
@@ -164,6 +173,7 @@ pub fn extract_igm_record(file_name: String, zip_bytes: &[u8]) -> Result<JsValue
 
     let record = IgmRecord {
         ssh_timestamp,
+        ssh_created,
         aligned_timestamp,
         area: area_from_igm_file(&area_code).to_string(),
         ssh_version: version,
@@ -303,6 +313,7 @@ pub fn compare_records(
 
             rows.push(ComparisonRow {
                 ssh_timestamp: rec.ssh_timestamp,
+                ssh_created: rec.ssh_created,
                 aligned_timestamp: rec.aligned_timestamp,
                 area: rec.area,
                 ssh_version: rec.ssh_version,

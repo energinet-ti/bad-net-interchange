@@ -52,6 +52,11 @@ const state = {
   hasStoredHandles: false,
   discoveredIgmFiles: [],
   latestCgmaFileHandle: null,
+  parsedIgmRecords: null,
+  parsedCgmaEntries: null,
+  versionCreatedByVersion: {},
+  latestIgmDateLabel: "",
+  latestCgmaPathLabel: "",
   comparisonData: null,
   sortColumn: "aligned_timestamp",
   sortAscending: true,
@@ -474,10 +479,12 @@ async function scanSources() {
   const igm = await findLatestIgmFolder(state.offlineRootHandle);
   debugLog.log(`Found IGM files: ${igm.files.length} in date ${igm.dateLabel}`);
   state.discoveredIgmFiles = igm.files;
+  state.latestIgmDateLabel = igm.dateLabel || "n/a";
 
   const cgma = await findLatestCgmaXml(state.cgmaRootHandle);
   debugLog.log(`Found CGMA file: ${cgma.pathLabel}`);
   state.latestCgmaFileHandle = cgma.handle;
+  state.latestCgmaPathLabel = cgma.pathLabel;
 
   const versionSet = new Set();
   const versionPattern = /^\d{8}T\d{4}Z_2D_(DKE|DKW)_SSH_(\d{3})\.zip$/;
@@ -489,7 +496,66 @@ async function scanSources() {
   }
 
   fillVersionSelect([...versionSet]);
-  el.selectionInfo.textContent = `IGM date folder: ${igm.dateLabel} | CGMA file: ${cgma.pathLabel} | IGM files: ${igm.files.length}`;
+}
+
+function computeVersionCreatedMap(igmRecords) {
+  const versions = new Map();
+  for (const rec of igmRecords) {
+    const version = String(rec.ssh_version || "");
+    const created = String(rec.ssh_created || "");
+    if (!version || !created) {
+      continue;
+    }
+    if (!versions.has(version)) {
+      versions.set(version, new Set());
+    }
+    versions.get(version).add(created);
+  }
+
+  const out = {};
+  for (const [version, createdSet] of versions.entries()) {
+    const values = [...createdSet];
+    out[version] = values.length === 1 ? values[0] : `${values[0]} (mixed created timestamps)`;
+  }
+  return out;
+}
+
+function countUniqueTimeslots(rows) {
+  const slots = new Set(rows.map((r) => r.aligned_timestamp));
+  return slots.size;
+}
+
+function updateSelectionInfo(selectedVersion, outputRows) {
+  const versionLabel = selectedVersion === "latest" ? "latest" : selectedVersion;
+  const createdLabel =
+    selectedVersion === "latest"
+      ? "n/a (latest mode can mix versions)"
+      : (state.versionCreatedByVersion[selectedVersion] || "n/a");
+
+  const timeslotCount = countUniqueTimeslots(outputRows || []);
+  el.selectionInfo.textContent =
+    `IGM date folder: ${state.latestIgmDateLabel} | CGMA file: ${state.latestCgmaPathLabel || "n/a"} | ` +
+    `Selected version: ${versionLabel} | Version created: ${createdLabel} | Timeslots: ${timeslotCount}`;
+}
+
+function applySelectedVersion(selectedVersion) {
+  if (!state.parsedIgmRecords || !state.parsedCgmaEntries) {
+    return;
+  }
+
+  const output = compare_records(
+    state.parsedIgmRecords,
+    state.parsedCgmaEntries,
+    selectedVersion,
+    50,
+    200,
+  );
+
+  renderRows(output.rows);
+  updateSelectionInfo(selectedVersion, output.rows);
+  setResultSummary(
+    `Matched rows: ${output.matched_rows} | Versions discovered: ${output.discovered_versions.join(", ") || "n/a"} | Version mode: ${selectedVersion}`
+  );
 }
 
 function sortRows(rows) {
@@ -807,14 +873,19 @@ async function runComparison() {
   const cgmaEntries = parse_cgma_inhouse(cgmaText, false);
   debugLog.log(`Parsed ${cgmaEntries.length} CGMA entries`, 'info');
 
+  state.parsedIgmRecords = igmRecords;
+  state.parsedCgmaEntries = cgmaEntries;
+  state.versionCreatedByVersion = computeVersionCreatedMap(igmRecords);
+
   const selectedVersion = el.versionSelect.value || "latest";
   setProgress("Comparing records...", 0.93);
   debugLog.log(`Running comparison with version mode: ${selectedVersion}`, 'info');
-  const output = compare_records(igmRecords, cgmaEntries, selectedVersion, 50, 200);
+  const output = compare_records(state.parsedIgmRecords, state.parsedCgmaEntries, selectedVersion, 50, 200);
   debugLog.log(`Comparison complete: ${output.matched_rows} rows matched`, 'info');
 
   setProgress("Rendering tables...", 0.98);
   renderRows(output.rows);
+  updateSelectionInfo(selectedVersion, output.rows);
   setResultSummary(
     `Matched rows: ${output.matched_rows} | Versions discovered: ${output.discovered_versions.join(", ") || "n/a"
     } | Version mode: ${selectedVersion}`
@@ -1027,6 +1098,14 @@ function bindUi() {
     } finally {
       setBusy(false, "Done", 1);
     }
+  });
+
+  el.versionSelect.addEventListener("change", () => {
+    if (!state.parsedIgmRecords || !state.parsedCgmaEntries) {
+      return;
+    }
+    const selectedVersion = el.versionSelect.value || "latest";
+    applySelectedVersion(selectedVersion);
   });
 
   el.diffTab.addEventListener("click", () => {
