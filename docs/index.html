@@ -37,9 +37,8 @@
 
       <section class="status-grid">
         <article class="card">
-          <h2>Mounted Root Folder</h2>
-          <div id="folderStatus" class="mono small">No root folder mounted yet.</div>
-          <button id="remountButton" class="btn btn-secondary" style="margin-top: 8px; display: none;">Re-mount Folder</button>
+          <h2>Configured Folders</h2>
+          <div id="folderStatus" class="mono small">No folders selected yet.</div>
         </article>
         <article class="card">
           <h2>Selection</h2>
@@ -52,9 +51,10 @@
       </section>
 
       <section class="card copy-card">
-        <h2>Single Root Folder Path</h2>
-        <p>Grant read access to this root folder once. The app automatically discovers the OFFLINE and CGMA_TSO subfolders. Click "Re-mount Folder" in the status card above to re-select the same folder in future sessions.</p>
-        <textarea readonly class="copy-box">\\fs61\</textarea>
+        <h2>Required Folder Access</h2>
+        <p>Grant read access to these two network share roots. The app remembers both handles across sessions.</p>
+        <textarea readonly class="copy-box">\\fs61\driftdata\Drift\Arkiv\CGMES\OFFLINE\
+\\fs61\BizTalkFileShare\BTS2010\Common\Tracking\CGMA_TSO\</textarea>
       </section>
 
       <section class="card">
@@ -127,15 +127,17 @@
     </main>
 
     <dialog id="settingsDialog" class="settings-dialog">
-      <h2>Root Folder Access</h2>
-      <p>Grant read access to the \\fs61\ root folder. The app will automatically discover the required subfolders:</p>
-      <ul style="margin: 8px 0; padding-left: 20px; color: var(--text-soft); font-size: 0.9rem;">
-        <li>driftdata/Drift/Arkiv/CGMES/OFFLINE/ (for 2D SSH scenarios)</li>
-        <li>BizTalkFileShare/BTS2010/Common/Tracking/CGMA_TSO/ (for CGMA inhouse XML)</li>
-      </ul>
+      <h2>Folder Permissions</h2>
+      <p>Grant read access to both source roots. The app scans date + GUID subfolders automatically.</p>
       <div class="settings-actions">
-        <button id="grantRootButton" class="btn btn-secondary">Grant Root Folder Access</button>
+        <button id="grantOfflineButton" class="btn btn-secondary">Grant OFFLINE Root</button>
+        <button id="grantCgmaButton" class="btn btn-secondary">Grant CGMA Root</button>
       </div>
+      <p class="small">
+        OFFLINE root expected: \\fs61\driftdata\Drift\Arkiv\CGMES\OFFLINE\
+        <br />
+        CGMA root expected: \\fs61\BizTalkFileShare\BTS2010\Common\Tracking\CGMA_TSO\
+      </p>
       <div class="dialog-footer">
         <button id="closeSettingsButton" class="btn btn-primary">Close</button>
       </div>

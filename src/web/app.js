@@ -14,8 +14,8 @@ const el = {
   runButton: document.getElementById("runButton"),
   settingsDialog: document.getElementById("settingsDialog"),
   closeSettingsButton: document.getElementById("closeSettingsButton"),
-  grantRootButton: document.getElementById("grantRootButton"),
-  remountButton: document.getElementById("remountButton"),
+  grantOfflineButton: document.getElementById("grantOfflineButton"),
+  grantCgmaButton: document.getElementById("grantCgmaButton"),
   folderStatus: document.getElementById("folderStatus"),
   versionSelect: document.getElementById("versionSelect"),
   selectionInfo: document.getElementById("selectionInfo"),
@@ -38,11 +38,12 @@ const el = {
 };
 
 const state = {
-  rootHandle: null,
+  offlineRootHandle: null,
+  cgmaRootHandle: null,
   discoveredIgmFiles: [],
   latestCgmaFileHandle: null,
   comparisonData: null,
-  sortColumn: "timestamp",
+  sortColumn: "aligned_timestamp",
   sortAscending: true,
   visualizationMode: "charts",
   initialized: false,
@@ -128,13 +129,9 @@ async function ensureReadPermission(handle) {
 }
 
 function setFolderStatus() {
-  if (state.rootHandle) {
-    el.folderStatus.textContent = `✓ ${state.rootHandle.name}\n(Single root with auto-discovery)`;
-    el.remountButton.style.display = "inline-block";
-  } else {
-    el.folderStatus.textContent = "✗ No root folder mounted yet";
-    el.remountButton.style.display = "none";
-  }
+  const offline = state.offlineRootHandle ? `✓ ${state.offlineRootHandle.name}` : "✗ not set";
+  const cgma = state.cgmaRootHandle ? `✓ ${state.cgmaRootHandle.name}` : "✗ not set";
+  el.folderStatus.textContent = `OFFLINE root: ${offline}\nCGMA root: ${cgma}`;
 }
 
 function setResultSummary(message) {
@@ -188,39 +185,23 @@ function fillVersionSelect(versions) {
   el.versionSelect.value = "latest";
 }
 
-async function findLatestIgmFolder(rootHandle, lookbackDays = 1) {
+async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
   lookbackDays = Math.min(lookbackDays, 1);
   const pattern = /^\d{8}T\d{4}Z_2D_(DKE|DKW)_SSH_\d{3}\.zip$/;
   let allMatches = [];
   let latestDateLabel = null;
 
-  debugLog.log(`[IGM Discovery] Searching OFFLINE subfolder for 2D scenarios with lookback=${lookbackDays} days`, 'info');
-  
-  // Navigate to OFFLINE subfolder: driftdata/Drift/Arkiv/CGMES/OFFLINE/
-  let offlineRoot;
-  try {
-    const driftdata = await rootHandle.getDirectoryHandle("driftdata");
-    const drift = await driftdata.getDirectoryHandle("Drift");
-    const arkiv = await drift.getDirectoryHandle("Arkiv");
-    const cgmes = await arkiv.getDirectoryHandle("CGMES");
-    offlineRoot = await cgmes.getDirectoryHandle("OFFLINE");
-    debugLog.log(`[IGM Discovery] ✓ Navigated to OFFLINE subfolder`, 'info');
-  } catch (err) {
-    const errorMsg = `Cannot navigate to OFFLINE subfolder: ${String(err.message || err)}`;
-    debugLog.log(errorMsg, 'error');
-    throw new Error(errorMsg);
-  }
-
+  debugLog.log(`[IGM Discovery] Searching OFFLINE root for 2D scenarios with lookback=${lookbackDays} days`, 'info');
   // Probe root handle to confirm visibility
   try {
     const rootEntries = [];
-    for await (const entry of offlineRoot.values()) {
+    for await (const entry of offlineRootHandle.values()) {
       rootEntries.push(`${entry.kind}:${entry.name}`);
       if (rootEntries.length >= 15) { rootEntries.push('...truncated'); break; }
     }
-    debugLog.log(`[IGM Discovery] OFFLINE root children: ${rootEntries.length ? rootEntries.join(' | ') : '(empty or inaccessible)'}`, 'info');
+    debugLog.log(`[IGM Discovery] Root handle children: ${rootEntries.length ? rootEntries.join(' | ') : '(empty or inaccessible)'}`, 'info');
   } catch (probeErr) {
-    debugLog.log(`[IGM Discovery] Cannot probe OFFLINE root: ${String(probeErr.message || probeErr)}`, 'error');
+    debugLog.log(`[IGM Discovery] Cannot probe root handle: ${String(probeErr.message || probeErr)}`, 'error');
   }
 
   // Search across the full lookback window to find latest available 2D SSH set.
@@ -234,7 +215,7 @@ async function findLatestIgmFolder(rootHandle, lookbackDays = 1) {
 
     let yearDir;
     try {
-      yearDir = await offlineRoot.getDirectoryHandle(y);
+      yearDir = await offlineRootHandle.getDirectoryHandle(y);
       debugLog.log(`[IGM Discovery] ✓ Year dir exists: ${y}`, 'info');
     } catch (err) {
       debugLog.log(`[IGM Discovery] ✗ Year dir missing: ${y} (${String(err.message || err)})`, 'warn');
@@ -322,7 +303,7 @@ async function findLatestIgmFolder(rootHandle, lookbackDays = 1) {
   }
 
   if (allMatches.length === 0) {
-    const errorMsg = `No 2D DKE/DKW SSH files found in the OFFLINE subfolder within lookback range.`;
+    const errorMsg = `No 2D DKE/DKW SSH files found in the OFFLINE root within lookback range.`;
     debugLog.log(errorMsg, 'error');
     throw new Error(errorMsg);
   }
@@ -336,26 +317,11 @@ async function findLatestIgmFolder(rootHandle, lookbackDays = 1) {
   };
 }
 
-async function findLatestCgmaXml(rootHandle, lookbackDays = 1) {
+async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 1) {
   lookbackDays = Math.min(lookbackDays, 1);
   let best = null;
 
-  debugLog.log(`[CGMA Discovery] Searching CGMA subfolder for Inhouse XML with lookback=${lookbackDays} days`, 'info');
-
-  // Navigate to CGMA subfolder: BizTalkFileShare/BTS2010/Common/Tracking/CGMA_TSO/
-  let cgmaRoot;
-  try {
-    const bizTalk = await rootHandle.getDirectoryHandle("BizTalkFileShare");
-    const bts2010 = await bizTalk.getDirectoryHandle("BTS2010");
-    const common = await bts2010.getDirectoryHandle("Common");
-    const tracking = await common.getDirectoryHandle("Tracking");
-    cgmaRoot = await tracking.getDirectoryHandle("CGMA_TSO");
-    debugLog.log(`[CGMA Discovery] ✓ Navigated to CGMA_TSO subfolder`, 'info');
-  } catch (err) {
-    const errorMsg = `Cannot navigate to CGMA_TSO subfolder: ${String(err.message || err)}`;
-    debugLog.log(errorMsg, 'error');
-    throw new Error(errorMsg);
-  }
+  debugLog.log(`[CGMA Discovery] Searching CGMA root for Inhouse XML with lookback=${lookbackDays} days`, 'info');
 
   for (let offset = 0; offset <= lookbackDays; offset += 1) {
     const date = new Date();
@@ -367,7 +333,7 @@ async function findLatestCgmaXml(rootHandle, lookbackDays = 1) {
 
     let yearDir;
     try {
-      yearDir = await cgmaRoot.getDirectoryHandle(y);
+      yearDir = await cgmaRootHandle.getDirectoryHandle(y);
       debugLog.log(`[CGMA Discovery] ✓ Year dir exists: ${y}`, 'info');
     } catch (err) {
       debugLog.log(`[CGMA Discovery] ✗ Year dir missing: ${y} (${String(err.message || err)})`, 'warn');
@@ -430,7 +396,7 @@ async function findLatestCgmaXml(rootHandle, lookbackDays = 1) {
   }
 
   if (!best) {
-    const errorMsg = `No Inhouse XML file found in CGMA subfolder within lookback range. Searched ${lookbackDays} day folders.`;
+    const errorMsg = `No Inhouse XML file found in CGMA root within lookback range. Searched ${lookbackDays} day folders.`;
     debugLog.log(errorMsg, 'error');
     throw new Error(errorMsg);
   }
@@ -442,11 +408,11 @@ async function findLatestCgmaXml(rootHandle, lookbackDays = 1) {
 
 async function scanSources() {
   debugLog.log(`Scanning sources...`);
-  const igm = await findLatestIgmFolder(state.rootHandle);
+  const igm = await findLatestIgmFolder(state.offlineRootHandle);
   debugLog.log(`Found IGM files: ${igm.files.length} in date ${igm.dateLabel}`);
   state.discoveredIgmFiles = igm.files;
 
-  const cgma = await findLatestCgmaXml(state.rootHandle);
+  const cgma = await findLatestCgmaXml(state.cgmaRootHandle);
   debugLog.log(`Found CGMA file: ${cgma.pathLabel}`);
   state.latestCgmaFileHandle = cgma.handle;
 
@@ -622,8 +588,8 @@ function renderRows(rows) {
 
 async function runComparison() {
   debugLog.log(`Starting comparison run...`, 'info');
-  if (!state.rootHandle) {
-    throw new Error("Please mount the root folder in Settings first.");
+  if (!state.offlineRootHandle || !state.cgmaRootHandle) {
+    throw new Error("Please configure both folder permissions in Settings first.");
   }
 
   setProgress("Scanning source folders...", 0.08);
@@ -707,39 +673,49 @@ async function logHandlePreview(handle, label) {
   }
 }
 
-async function grantRootAccess() {
-  debugLog.log(`Requesting root folder access (\\fs61\)...`, 'info');
+async function grantOfflineRoot() {
+  debugLog.log(`Requesting OFFLINE root access...`, 'info');
   const handle = await window.showDirectoryPicker({ mode: "read" });
-  debugLog.log(`Root handle obtained`, 'info');
+  debugLog.log(`OFFLINE root handle obtained`, 'info');
   if (!(await ensureReadPermission(handle))) {
-    throw new Error("Read permission denied for root folder.");
+    throw new Error("Read permission denied for OFFLINE root.");
   }
-  state.rootHandle = handle;
-  await saveHandle("rootHandle", handle);
+  state.offlineRootHandle = handle;
+  await saveHandle("offlineRoot", handle);
   setFolderStatus();
-  await logHandlePreview(handle, "Root folder");
-  debugLog.log(`Root folder saved: "${handle.name}" (key: rootHandle)`, 'info');
+  await logHandlePreview(handle, "OFFLINE root");
+  debugLog.log(`OFFLINE root saved: "${handle.name}" (key: offlineRoot)`, 'info');
 }
 
-async function remountRoot() {
-  if (!state.rootHandle) {
-    throw new Error("No root folder to remount. Please grant access first.");
+async function grantCgmaRoot() {
+  debugLog.log(`Requesting CGMA root access...`, 'info');
+  const handle = await window.showDirectoryPicker({ mode: "read" });
+  debugLog.log(`CGMA root handle obtained`, 'info');
+  if (!(await ensureReadPermission(handle))) {
+    throw new Error("Read permission denied for CGMA root.");
   }
-  debugLog.log(`Re-mounting root folder...`, 'info');
-  if (!(await ensureReadPermission(state.rootHandle))) {
-    throw new Error("Read permission not granted for mounted folder.");
-  }
-  debugLog.log(`Root folder re-mounted: "${state.rootHandle.name}"`, 'info');
+  state.cgmaRootHandle = handle;
+  await saveHandle("cgmaRoot", handle);
+  setFolderStatus();
+  await logHandlePreview(handle, "CGMA root");
+  debugLog.log(`CGMA root saved: "${handle.name}" (key: cgmaRoot)`, 'info');
 }
 
 async function restoreHandles() {
-  const root = await loadHandle("rootHandle");
+  const offline = await loadHandle("offlineRoot");
+  const cgma = await loadHandle("cgmaRoot");
 
-  if (root && (await ensureReadPermission(root))) {
-    state.rootHandle = root;
-    debugLog.log(`Restored root folder: "${root.name}"`, 'info');
-  } else if (root) {
-    debugLog.log(`Root folder "${root.name}" in IndexedDB but permission not granted`, 'warn');
+  if (offline && (await ensureReadPermission(offline))) {
+    state.offlineRootHandle = offline;
+    debugLog.log(`Restored OFFLINE root: "${offline.name}"`, 'info');
+  } else if (offline) {
+    debugLog.log(`OFFLINE root "${offline.name}" in IndexedDB but permission not granted`, 'warn');
+  }
+  if (cgma && (await ensureReadPermission(cgma))) {
+    state.cgmaRootHandle = cgma;
+    debugLog.log(`Restored CGMA root: "${cgma.name}"`, 'info');
+  } else if (cgma) {
+    debugLog.log(`CGMA root "${cgma.name}" in IndexedDB but permission not granted`, 'warn');
   }
   setFolderStatus();
 }
@@ -753,24 +729,24 @@ function bindUi() {
     el.settingsDialog.close();
   });
 
-  el.grantRootButton.addEventListener("click", async () => {
+  el.grantOfflineButton.addEventListener("click", async () => {
     try {
-      await grantRootAccess();
-      setResultSummary("Root folder access granted. Ready to run comparison.");
+      await grantOfflineRoot();
+      setResultSummary("OFFLINE root granted.");
     } catch (err) {
       const msg = String(err.message || err);
-      debugLog.log(`Error granting root access: ${msg}`, 'error');
+      debugLog.log(`Error granting OFFLINE root: ${msg}`, 'error');
       setResultSummary(msg);
     }
   });
 
-  el.remountButton.addEventListener("click", async () => {
+  el.grantCgmaButton.addEventListener("click", async () => {
     try {
-      await remountRoot();
-      setResultSummary("Root folder re-mounted successfully.");
+      await grantCgmaRoot();
+      setResultSummary("CGMA root granted.");
     } catch (err) {
       const msg = String(err.message || err);
-      debugLog.log(`Error re-mounting root: ${msg}`, 'error');
+      debugLog.log(`Error granting CGMA root: ${msg}`, 'error');
       setResultSummary(msg);
     }
   });
