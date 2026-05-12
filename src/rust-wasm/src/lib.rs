@@ -198,16 +198,42 @@ pub fn parse_cgma_inhouse(xml_text: String, reverse_sign: bool) -> Result<JsValu
     {
         let ts_id = ts_node.attribute("id").unwrap_or("").to_uppercase();
 
-        let area = if ts_id.contains("NP-DK1") {
+        let mut in_area_id: Option<String> = None;
+        let mut out_area_id: Option<String> = None;
+        for area_node in ts_node
+            .children()
+            .filter(|n| n.is_element() && n.tag_name().name() == "Area")
+        {
+            let area_type = area_node.attribute("type").unwrap_or("").to_ascii_lowercase();
+            let area_id = area_node.attribute("id").unwrap_or("").trim().to_uppercase();
+            if area_type == "inbalancearea" {
+                in_area_id = Some(area_id);
+            } else if area_type == "outbalancearea" {
+                out_area_id = Some(area_id);
+            }
+        }
+
+        let area = if ts_id.contains("DK1")
+            || matches!(in_area_id.as_deref(), Some("DK1"))
+            || matches!(out_area_id.as_deref(), Some("DK1"))
+        {
             "DK1"
-        } else if ts_id.contains("NP-DK2") {
+        } else if ts_id.contains("DK2")
+            || matches!(in_area_id.as_deref(), Some("DK2"))
+            || matches!(out_area_id.as_deref(), Some("DK2"))
+        {
             "DK2"
         } else {
             continue;
         };
 
-        let is_import = ts_id.contains("-IM");
-        let is_export = ts_id.contains("-EX");
+        let mut is_import = ts_id.contains("-IM") || ts_id.contains("_IM");
+        let mut is_export = ts_id.contains("-EX") || ts_id.contains("_EX");
+
+        if !is_import && !is_export {
+            is_import = matches!(in_area_id.as_deref(), Some("DK1") | Some("DK2"));
+            is_export = matches!(out_area_id.as_deref(), Some("DK1") | Some("DK2"));
+        }
 
         if !is_import && !is_export {
             continue;

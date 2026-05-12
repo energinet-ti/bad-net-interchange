@@ -26,6 +26,7 @@ const el = {
   offlineValidation: document.getElementById("offlineValidation"),
   cgmaValidation: document.getElementById("cgmaValidation"),
   debugEnabledCheckbox: document.getElementById("debugEnabledCheckbox"),
+  refreshButton: document.getElementById("refreshButton"),
   versionSelect: document.getElementById("versionSelect"),
   selectionInfo: document.getElementById("selectionInfo"),
   resultSummary: document.getElementById("resultSummary"),
@@ -210,7 +211,7 @@ function setFolderStatus() {
   // Auto-run comparison if both folders are granted
   if (offlineGranted && cgmaGranted && !state.busy) {
     debugLog.log("Both folders granted, auto-running comparison");
-    runComparison();
+    triggerComparisonRun("Auto-refreshing comparison...");
   }
 }
 
@@ -954,6 +955,11 @@ async function runComparison() {
   setProgress("Parsing CGMA entries...", 0.84);
   const cgmaEntries = parse_cgma_inhouse(cgmaText, false);
   debugLog.log(`Parsed ${cgmaEntries.length} CGMA entries`, 'info');
+  if (cgmaEntries.length === 0) {
+    throw new Error(
+      "No CGMA net-position rows were parsed from the selected Inhouse XML. Verify the newest CGMA file format and date path."
+    );
+  }
 
   state.cachedIgmRecords = igmRecords;
   state.cachedCgmaEntries = cgmaEntries;
@@ -974,6 +980,45 @@ async function runComparison() {
   );
 
   setProgress("Done", 1);
+}
+
+function countOverlapKeys(igmRecords, cgmaEntries) {
+  const igmKeys = new Set((igmRecords || []).map((r) => `${r.aligned_timestamp}|${r.area}`));
+  const cgmaKeys = new Set((cgmaEntries || []).map((r) => `${r.timestamp}|${r.area}`));
+
+  let overlap = 0;
+  for (const key of igmKeys) {
+    if (cgmaKeys.has(key)) {
+      overlap += 1;
+    }
+  }
+  return overlap;
+}
+
+async function triggerComparisonRun(startMessage = "Refreshing comparison...") {
+  if (state.busy) {
+    return;
+  }
+
+  setBusy(true, startMessage, 0.02);
+  try {
+    await runComparison();
+
+    if ((state.comparisonData || []).length === 0) {
+      const igmCount = (state.cachedIgmRecords || []).length;
+      const cgmaCount = (state.cachedCgmaEntries || []).length;
+      const overlap = countOverlapKeys(state.cachedIgmRecords, state.cachedCgmaEntries);
+      setResultSummary(
+        `Comparison complete: 0 rows matched. Parsed IGM: ${igmCount}, CGMA: ${cgmaCount}, overlapping timestamp/area keys: ${overlap}.`
+      );
+    }
+  } catch (err) {
+    const msg = String(err.message || err);
+    debugLog.log(`Comparison failed: ${msg}`, 'error');
+    setResultSummary(msg);
+  } finally {
+    setBusy(false);
+  }
 }
 
 async function logHandlePreview(handle, label) {
@@ -1189,6 +1234,12 @@ function bindUi() {
   el.copyCgmaPathButton.addEventListener("click", () => {
     copyPathFromElement(el.copyCgmaPathButton, "\\\\fs61\\BizTalkFileShare\\BTS2010\\Common\\Tracking\\CGMA_TSO\\");
   });
+
+  if (el.refreshButton) {
+    el.refreshButton.addEventListener("click", () => {
+      triggerComparisonRun("Refreshing comparison...");
+    });
+  }
 
   el.versionSelect.addEventListener("change", () => {
     if (!state.cachedIgmRecords || !state.cachedCgmaEntries) {
