@@ -55,6 +55,7 @@ const state = {
   cgmaRootHandle: null,
   hasStoredHandles: false,
   discoveredIgmFiles: [],
+  discoveredCgmaCandidates: [],
   latestCgmaFileHandle: null,
   cachedIgmRecords: null,
   cachedCgmaEntries: null,
@@ -470,7 +471,7 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
 
 async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 1) {
   lookbackDays = Math.min(lookbackDays, 1);
-  let best = null;
+  const candidates = [];
 
   debugLog.log(`[CGMA Discovery] Searching CGMA root for Inhouse XML with lookback=${lookbackDays} days`, 'info');
 
@@ -527,17 +528,12 @@ async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 1) {
           }
 
           const file = await entry.getFile();
-          const candidate = {
+          candidates.push({
             handle: entry,
             pathLabel: `${y}/${m}/${d}/${guidDir.name}/${entry.name}`,
             modified: file.lastModified,
-          };
+          });
           debugLog.log(`[CGMA Discovery]     Found: ${entry.name} (modified: ${new Date(file.lastModified).toISOString()})`, 'info');
-
-          if (!best || candidate.modified > best.modified) {
-            best = candidate;
-            debugLog.log(`[CGMA Discovery]     ✓ New best candidate`, 'info');
-          }
         }
       }
       debugLog.log(`[CGMA Discovery] Scanned ${guidDirsFound} GUID directories in ${pathLabel}`, 'info');
@@ -546,15 +542,20 @@ async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 1) {
     }
   }
 
-  if (!best) {
+  if (candidates.length === 0) {
     const errorMsg = `No Inhouse XML file found in CGMA root within lookback range. Searched ${lookbackDays} day folders.`;
     debugLog.log(errorMsg, 'error');
     throw new Error(errorMsg);
   }
 
-  debugLog.log(`[CGMA Discovery] ✓ Selected file: ${best.pathLabel}`, 'info');
+  candidates.sort((a, b) => b.modified - a.modified);
+  debugLog.log(`[CGMA Discovery] ✓ Candidate files discovered: ${candidates.length}`, 'info');
+  debugLog.log(`[CGMA Discovery] Latest by modified time: ${candidates[0].pathLabel}`, 'info');
 
-  return best;
+  return {
+    best: candidates[0],
+    candidates,
+  };
 }
 
 async function scanSources() {
@@ -565,9 +566,10 @@ async function scanSources() {
   state.latestIgmDateLabel = igm.dateLabel || "n/a";
 
   const cgma = await findLatestCgmaXml(state.cgmaRootHandle);
-  debugLog.log(`Found CGMA file: ${cgma.pathLabel}`);
-  state.latestCgmaFileHandle = cgma.handle;
-  state.latestCgmaPathLabel = cgma.pathLabel;
+  debugLog.log(`Found CGMA latest file: ${cgma.best.pathLabel}`);
+  state.discoveredCgmaCandidates = cgma.candidates;
+  state.latestCgmaFileHandle = cgma.best.handle;
+  state.latestCgmaPathLabel = cgma.best.pathLabel;
 
   const versionSet = new Set();
   const versionPattern = /^\d{8}T\d{4}Z_2D_(DKE|DKW)_SSH_(\d{3})\.zip$/;
@@ -946,15 +948,56 @@ async function runComparison() {
     throw new Error("No parseable IGM records were found in the selected date folder.");
   }
 
-  setProgress("Reading CGMA file...", 0.75);
-  debugLog.log(`Reading CGMA file...`, 'info');
-  const cgmaFile = await state.latestCgmaFileHandle.getFile();
-  const cgmaText = await cgmaFile.text();
-  debugLog.log(`CGMA file size: ${cgmaText.length} bytes`, 'info');
+  setProgress("Selecting CGMA file...", 0.75);
+  const igmKeySet = new Set(igmRecords.map((r) => `${r.aligned_timestamp}|${r.area}`));
+  const cgmaCandidates = (state.discoveredCgmaCandidates || []).slice(0, 12);
+  if (cgmaCandidates.length === 0) {
+    throw new Error("No CGMA candidate files were discovered.");
+  }
+
+  let selectedCandidate = cgmaCandidates[0];
+  let selectedEntries = null;
+  let bestOverlap = -1;
+
+  for (let i = 0; i < cgmaCandidates.length; i += 1) {
+    const candidate = cgmaCandidates[i];
+    setProgress(`Evaluating CGMA candidate ${i + 1}/${cgmaCandidates.length}...`, 0.75 + (0.09 * ((i + 1) / cgmaCandidates.length)));
+
+    const cgmaFile = await candidate.handle.getFile();
+    const cgmaText = await cgmaFile.text();
+    const entries = parse_cgma_inhouse(cgmaText, false);
+
+    const cgmaKeySet = new Set(entries.map((row) => `${row.timestamp}|${row.area}`));
+    let overlap = 0;
+    for (const key of igmKeySet) {
+      if (cgmaKeySet.has(key)) {
+        overlap += 1;
+      }
+    }
+
+    debugLog.log(`[CGMA Selection] Candidate ${i + 1}: ${candidate.pathLabel} | entries=${entries.length} | overlap=${overlap}`, 'info');
+
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap;
+      selectedCandidate = candidate;
+      selectedEntries = entries;
+    }
+  }
+
+  if (!selectedEntries) {
+    throw new Error("Failed to parse any CGMA candidate file.");
+  }
+
+  state.latestCgmaFileHandle = selectedCandidate.handle;
+  state.latestCgmaPathLabel = selectedCandidate.pathLabel;
+  debugLog.log(`[CGMA Selection] Using file: ${selectedCandidate.pathLabel} (overlap=${bestOverlap})`, 'info');
+  if (selectedCandidate.pathLabel !== cgmaCandidates[0].pathLabel) {
+    debugLog.log(`[CGMA Selection] Newest CGMA had lower overlap. Fell back to an older file for matching.`, 'warn');
+  }
 
   setProgress("Parsing CGMA entries...", 0.84);
-  const cgmaEntries = parse_cgma_inhouse(cgmaText, false);
-  debugLog.log(`Parsed ${cgmaEntries.length} CGMA entries`, 'info');
+  const cgmaEntries = selectedEntries;
+  debugLog.log(`Parsed ${cgmaEntries.length} CGMA entries from selected file`, 'info');
   if (cgmaEntries.length === 0) {
     throw new Error(
       "No CGMA net-position rows were parsed from the selected Inhouse XML. Verify the newest CGMA file format and date path."
