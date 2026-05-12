@@ -12,18 +12,18 @@
       <header class="hero">
         <div class="hero__glow"></div>
         <div class="hero__content">
-          <p class="eyebrow">Energinet Operations</p>
-          <h1>CGMA vs IGM Comparator</h1>
-          <p class="subtitle">Client-side Rust + WASM validation of latest 2D SSH scenarios against CGMA inhouse net position.</p>
-          <div id="folderStatusInline" class="folder-status-inline" aria-live="polite">
-            <span id="offlineStatusPill" class="status-pill status-missing">OFFLINE not granted</span>
-            <span id="cgmaStatusPill" class="status-pill status-missing">CGMA not granted</span>
+          <div class="hero__title-row">
+            <h1>CGMA vs IGM Comparator</h1>
+            <button id="infoButton" class="btn-icon" aria-label="Information">
+              <span class="info-icon">ℹ</span>
+            </button>
+            <div id="infoTooltip" class="tooltip hidden">
+              Validation of latest 2D SSH scenarios against CGMA inhouse net position
+            </div>
           </div>
         </div>
         <div class="actions">
-          <button id="mainRestoreButton" class="btn btn-secondary hidden">Re-grant Folders</button>
           <button id="settingsButton" class="btn btn-secondary">Settings</button>
-          <button id="runButton" class="btn btn-primary">Run Comparison</button>
         </div>
       </header>
 
@@ -41,15 +41,20 @@
       </section>
 
       <section class="card">
-        <h2>Comparison Output</h2>
-        <div class="output-toolbar">
-          <div class="field-row compact-row">
-            <label for="versionSelect">IGM version:</label>
-            <select id="versionSelect"></select>
+        <div class="output-header">
+          <div id="folderStatusCompact" class="folder-status-compact" aria-live="polite">
+            <span id="offlineStatusPillCompact" class="status-pill status-missing">OFFLINE not granted</span>
+            <span id="cgmaStatusPillCompact" class="status-pill status-missing">CGMA not granted</span>
           </div>
-          <div id="selectionInfo" class="small"></div>
+          <div class="output-toolbar">
+            <div id="selectionInfo" class="small"></div>
+            <div class="field-row compact-row">
+              <label for="versionSelect">Version:</label>
+              <select id="versionSelect"></select>
+            </div>
+          </div>
         </div>
-        <div id="resultSummary" class="small">No comparison run yet.</div>
+        <div id="resultSummary" class="small">Waiting for folder access...</div>
         
         <div class="tabs-container" id="tabsContainer">
           <button id="diffTab" class="tab-button active">Diff</button>
@@ -122,32 +127,56 @@
     </main>
 
     <dialog id="settingsDialog" class="settings-dialog">
-      <h2>Folder Permissions</h2>
-      <p>Grant read access to both source roots. You can copy expected paths below and paste directly in the folder picker.</p>
+      <h2>Control Room Setup</h2>
+      <div id="onboardingContent" class="onboarding-section">
+        <p><strong>Welcome to CGMA vs IGM Comparator</strong></p>
+        <p>This control center application compares latest SSH grid scenarios against CGMA inhouse net positions.</p>
+        <p><strong>Getting Started:</strong></p>
+        <ol>
+          <li>Grant access to both SMB network shares below</li>
+          <li>The comparison will run automatically once folders are verified</li>
+          <li>Use the Diff, Compare, and Tables tabs to view results</li>
+        </ol>
+      </div>
+
+      <div class="path-list" aria-label="Folder permissions">
+        <div class="path-item">
+          <div class="path-item-header">
+            <label class="small">OFFLINE Root</label>
+            <span id="offlineValidation" class="validation-status"></span>
+          </div>
+          <div class="path-row-flex">
+            <div class="path-row-outer">
+              <div class="path-helper-box">
+                <p class="path-helper mono">\\fs61\driftdata\Drift\Arkiv\CGMES\OFFLINE\</p>
+              </div>
+              <button id="copyOfflinePathButton" class="btn btn-icon-copy" aria-label="Copy OFFLINE path" title="Copy path">Copy</button>
+            </div>
+            <button id="grantOfflineButton" class="btn btn-secondary grant-btn-right">Grant OFFLINE Root</button>
+          </div>
+        </div>
+        <div class="path-item">
+          <div class="path-item-header">
+            <label class="small">CGMA Root</label>
+            <span id="cgmaValidation" class="validation-status"></span>
+          </div>
+          <div class="path-row-flex">
+            <div class="path-row-outer">
+              <div class="path-helper-box">
+                <p class="path-helper mono">\\fs61\BizTalkFileShare\BTS2010\Common\Tracking\CGMA_TSO\</p>
+              </div>
+              <button id="copyCgmaPathButton" class="btn btn-icon-copy" aria-label="Copy CGMA path" title="Copy path">Copy</button>
+            </div>
+            <button id="grantCgmaButton" class="btn btn-secondary grant-btn-right">Grant CGMA Root</button>
+          </div>
+        </div>
+      </div>
+
       <label class="settings-toggle" for="debugEnabledCheckbox">
         <input id="debugEnabledCheckbox" type="checkbox" />
         <span>Enable debug logging in browser console</span>
       </label>
-      <div class="settings-actions">
-        <button id="grantOfflineButton" class="btn btn-secondary">Grant OFFLINE Root</button>
-        <button id="grantCgmaButton" class="btn btn-secondary">Grant CGMA Root</button>
-      </div>
-      <div class="path-list" aria-label="Expected folder paths">
-        <div class="path-item">
-          <label for="offlinePathInput" class="small">OFFLINE root expected</label>
-          <div class="path-row">
-            <input id="offlinePathInput" class="path-input mono" type="text" readonly value="\\fs61\driftdata\Drift\Arkiv\CGMES\OFFLINE\" />
-            <button id="copyOfflinePathButton" class="btn btn-secondary btn-small" type="button">Copy</button>
-          </div>
-        </div>
-        <div class="path-item">
-          <label for="cgmaPathInput" class="small">CGMA root expected</label>
-          <div class="path-row">
-            <input id="cgmaPathInput" class="path-input mono" type="text" readonly value="\\fs61\BizTalkFileShare\BTS2010\Common\Tracking\CGMA_TSO\" />
-            <button id="copyCgmaPathButton" class="btn btn-secondary btn-small" type="button">Copy</button>
-          </div>
-        </div>
-      </div>
+
       <div class="dialog-footer">
         <button id="closeSettingsButton" class="btn btn-primary">Close</button>
       </div>

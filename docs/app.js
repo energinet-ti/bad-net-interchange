@@ -9,21 +9,22 @@ const DB_NAME = "cgma-igm-permissions";
 const DB_VERSION = 1;
 const STORE_NAME = "handles";
 const DEBUG_STORAGE_KEY = "cgma-igm-debug-enabled";
+const FIRST_VISIT_KEY = "cgma-igm-first-visit";
 
 const el = {
-  mainRestoreButton: document.getElementById("mainRestoreButton"),
   settingsButton: document.getElementById("settingsButton"),
-  runButton: document.getElementById("runButton"),
   settingsDialog: document.getElementById("settingsDialog"),
   closeSettingsButton: document.getElementById("closeSettingsButton"),
   grantOfflineButton: document.getElementById("grantOfflineButton"),
   grantCgmaButton: document.getElementById("grantCgmaButton"),
-  offlineStatusPill: document.getElementById("offlineStatusPill"),
-  cgmaStatusPill: document.getElementById("cgmaStatusPill"),
   copyOfflinePathButton: document.getElementById("copyOfflinePathButton"),
   copyCgmaPathButton: document.getElementById("copyCgmaPathButton"),
-  offlinePathInput: document.getElementById("offlinePathInput"),
-  cgmaPathInput: document.getElementById("cgmaPathInput"),
+  offlineStatusPill: document.getElementById("offlineStatusPill"),
+  cgmaStatusPill: document.getElementById("cgmaStatusPill"),
+  offlineStatusPillCompact: document.getElementById("offlineStatusPillCompact"),
+  cgmaStatusPillCompact: document.getElementById("cgmaStatusPillCompact"),
+  offlineValidation: document.getElementById("offlineValidation"),
+  cgmaValidation: document.getElementById("cgmaValidation"),
   debugEnabledCheckbox: document.getElementById("debugEnabledCheckbox"),
   versionSelect: document.getElementById("versionSelect"),
   selectionInfo: document.getElementById("selectionInfo"),
@@ -44,6 +45,8 @@ const el = {
   loaderCard: document.getElementById("loaderCard"),
   progressFill: document.getElementById("progressFill"),
   progressText: document.getElementById("progressText"),
+  infoButton: document.getElementById("infoButton"),
+  infoTooltip: document.getElementById("infoTooltip"),
 };
 
 const state = {
@@ -52,9 +55,9 @@ const state = {
   hasStoredHandles: false,
   discoveredIgmFiles: [],
   latestCgmaFileHandle: null,
-  parsedIgmRecords: null,
-  parsedCgmaEntries: null,
-  versionCreatedByVersion: {},
+  cachedIgmRecords: null,
+  cachedCgmaEntries: null,
+  versionCreatedMap: {},
   latestIgmDateLabel: "",
   latestCgmaPathLabel: "",
   comparisonData: null,
@@ -64,6 +67,10 @@ const state = {
   debugEnabled: false,
   initialized: false,
   busy: false,
+  folderValidation: {
+    offlineRoot: null,
+    cgmaRoot: null,
+  },
 };
 
 const debugLog = {
@@ -167,6 +174,7 @@ function setFolderStatus() {
   const offlineGranted = Boolean(state.offlineRootHandle);
   const cgmaGranted = Boolean(state.cgmaRootHandle);
 
+  // Update header status pills
   if (el.offlineStatusPill) {
     el.offlineStatusPill.className = `status-pill ${offlineGranted ? "status-ok" : "status-missing"}`;
     el.offlineStatusPill.textContent = offlineGranted
@@ -180,13 +188,89 @@ function setFolderStatus() {
       ? `CGMA granted (${state.cgmaRootHandle.name})`
       : "CGMA not granted";
   }
+
+  // Update compact status pills in comparison output
+  if (el.offlineStatusPillCompact) {
+    el.offlineStatusPillCompact.className = `status-pill ${offlineGranted ? "status-ok" : "status-missing"}`;
+    el.offlineStatusPillCompact.textContent = offlineGranted
+      ? `OFFLINE granted (${state.offlineRootHandle.name})`
+      : "OFFLINE not granted";
+  }
+
+  if (el.cgmaStatusPillCompact) {
+    el.cgmaStatusPillCompact.className = `status-pill ${cgmaGranted ? "status-ok" : "status-missing"}`;
+    el.cgmaStatusPillCompact.textContent = cgmaGranted
+      ? `CGMA granted (${state.cgmaRootHandle.name})`
+      : "CGMA not granted";
+  }
+
+  // Update validation status in settings
+  updateValidationStatus();
+
+  // Auto-run comparison if both folders are granted
+  if (offlineGranted && cgmaGranted && !state.busy) {
+    debugLog.log("Both folders granted, auto-running comparison");
+    runComparison();
+  }
 }
 
-function setMainRestoreVisibility() {
-  if (!el.mainRestoreButton) {
+function validateFolderStructure(handle, folderType) {
+  // Check if the folder has expected files
+  // For OFFLINE: should contain SSH files
+  // For CGMA: should contain XML files
+  return true; // Simplified - actual validation happens during file discovery
+}
+
+function updateValidationStatus() {
+  if (!el.offlineValidation || !el.cgmaValidation) {
     return;
   }
-  el.mainRestoreButton.classList.toggle("hidden", !state.hasStoredHandles);
+
+  const offlineGranted = Boolean(state.offlineRootHandle);
+  const cgmaGranted = Boolean(state.cgmaRootHandle);
+
+  // Update offline validation status
+  if (offlineGranted) {
+    el.offlineValidation.className = "validation-status valid";
+    el.offlineValidation.textContent = "✓ Granted";
+  } else {
+    el.offlineValidation.className = "validation-status pending";
+    el.offlineValidation.textContent = "Pending";
+  }
+
+  // Update CGMA validation status
+  if (cgmaGranted) {
+    el.cgmaValidation.className = "validation-status valid";
+    el.cgmaValidation.textContent = "✓ Granted";
+  } else {
+    el.cgmaValidation.className = "validation-status pending";
+    el.cgmaValidation.textContent = "Pending";
+  }
+}
+
+function isFirstVisit() {
+  try {
+    const visited = localStorage.getItem(FIRST_VISIT_KEY);
+    return !visited;
+  } catch {
+    return false;
+  }
+}
+
+function markFirstVisitDone() {
+  try {
+    localStorage.setItem(FIRST_VISIT_KEY, "true");
+  } catch {
+    // Ignore
+  }
+}
+
+function autoOpenSettingsIfFirstVisit() {
+  if (isFirstVisit()) {
+    debugLog.log("First visit detected, opening settings dialog");
+    el.settingsDialog.showModal();
+    markFirstVisitDone();
+  }
 }
 
 async function refreshStoredHandlePresence() {
@@ -195,7 +279,6 @@ async function refreshStoredHandlePresence() {
     loadHandle("cgmaRoot"),
   ]);
   state.hasStoredHandles = Boolean(offline && cgma);
-  setMainRestoreVisibility();
 }
 
 function getDiffMagnitude(row) {
@@ -213,7 +296,6 @@ function clearResults() {
 
 function setBusy(active, message = "Working...", fraction = 0) {
   state.busy = active;
-  el.runButton.disabled = active;
   el.loaderCard.classList.toggle("hidden", !active);
 
   if (el.progressText) {
@@ -873,14 +955,14 @@ async function runComparison() {
   const cgmaEntries = parse_cgma_inhouse(cgmaText, false);
   debugLog.log(`Parsed ${cgmaEntries.length} CGMA entries`, 'info');
 
-  state.parsedIgmRecords = igmRecords;
-  state.parsedCgmaEntries = cgmaEntries;
-  state.versionCreatedByVersion = computeVersionCreatedMap(igmRecords);
+  state.cachedIgmRecords = igmRecords;
+  state.cachedCgmaEntries = cgmaEntries;
+  state.versionCreatedMap = computeVersionCreatedMap(igmRecords);
 
   const selectedVersion = el.versionSelect.value || "latest";
   setProgress("Comparing records...", 0.93);
   debugLog.log(`Running comparison with version mode: ${selectedVersion}`, 'info');
-  const output = compare_records(state.parsedIgmRecords, state.parsedCgmaEntries, selectedVersion, 50, 200);
+  const output = compare_records(state.cachedIgmRecords, state.cachedCgmaEntries, selectedVersion, 50, 200);
   debugLog.log(`Comparison complete: ${output.matched_rows} rows matched`, 'info');
 
   setProgress("Rendering tables...", 0.98);
@@ -1019,17 +1101,28 @@ async function regrantStoredFolders() {
   }
 }
 
-function bindUi() {
-  el.mainRestoreButton.addEventListener("click", async () => {
-    try {
-      await regrantStoredFolders();
-    } catch (err) {
-      const msg = String(err.message || err);
-      debugLog.log(`Error re-granting folders: ${msg}`, 'error');
-      setResultSummary(msg);
-    }
-  });
+function copyPathFromElement(buttonElement, pathText) {
+  navigator.clipboard
+    .writeText(pathText)
+    .then(() => {
+      const originalText = buttonElement.textContent;
+      buttonElement.textContent = "✓";
+      buttonElement.style.background = "rgba(98, 209, 129, 0.15)";
+      buttonElement.style.color = "var(--good)";
+      setTimeout(() => {
+        buttonElement.textContent = originalText;
+        buttonElement.style.background = "";
+        buttonElement.style.color = "";
+      }, 1500);
+      debugLog.log("Path copied to clipboard");
+    })
+    .catch((err) => {
+      debugLog.log(`Failed to copy path: ${err}`, 'error');
+      setResultSummary("Failed to copy path to clipboard");
+    });
+}
 
+function bindUi() {
   el.settingsButton.addEventListener("click", () => {
     el.settingsDialog.showModal();
   });
@@ -1037,6 +1130,16 @@ function bindUi() {
   el.closeSettingsButton.addEventListener("click", () => {
     el.settingsDialog.close();
   });
+
+  // Info button tooltip
+  if (el.infoButton && el.infoTooltip) {
+    el.infoButton.addEventListener("mouseenter", () => {
+      el.infoTooltip.classList.remove("hidden");
+    });
+    el.infoButton.addEventListener("mouseleave", () => {
+      el.infoTooltip.classList.add("hidden");
+    });
+  }
 
   el.debugEnabledCheckbox.addEventListener("change", (event) => {
     saveDebugSetting(event.target.checked);
@@ -1055,18 +1158,11 @@ function bindUi() {
     }
   });
 
-  el.copyOfflinePathButton.addEventListener("click", async () => {
-    await copyPathFromInput(el.offlinePathInput, "OFFLINE");
-  });
-
-  el.copyCgmaPathButton.addEventListener("click", async () => {
-    await copyPathFromInput(el.cgmaPathInput, "CGMA");
-  });
-
   el.grantOfflineButton.addEventListener("click", async () => {
     try {
       await grantOfflineRoot();
       setResultSummary("OFFLINE root granted.");
+      updateValidationStatus();
     } catch (err) {
       const msg = String(err.message || err);
       debugLog.log(`Error granting OFFLINE root: ${msg}`, 'error');
@@ -1078,6 +1174,7 @@ function bindUi() {
     try {
       await grantCgmaRoot();
       setResultSummary("CGMA root granted.");
+      updateValidationStatus();
     } catch (err) {
       const msg = String(err.message || err);
       debugLog.log(`Error granting CGMA root: ${msg}`, 'error');
@@ -1085,23 +1182,16 @@ function bindUi() {
     }
   });
 
-  el.runButton.addEventListener("click", async () => {
-    try {
-      setBusy(true, "Starting comparison...", 0.02);
-      setResultSummary("Scanning folders and running comparison...");
-      await runComparison();
-    } catch (err) {
-      const msg = String(err.message || err);
-      clearResults();
-      setResultSummary(msg);
-      debugLog.log(`Comparison failed: ${msg}`, 'error');
-    } finally {
-      setBusy(false, "Done", 1);
-    }
+  el.copyOfflinePathButton.addEventListener("click", () => {
+    copyPathFromElement(el.copyOfflinePathButton, "\\\\fs61\\driftdata\\Drift\\Arkiv\\CGMES\\OFFLINE\\");
+  });
+
+  el.copyCgmaPathButton.addEventListener("click", () => {
+    copyPathFromElement(el.copyCgmaPathButton, "\\\\fs61\\BizTalkFileShare\\BTS2010\\Common\\Tracking\\CGMA_TSO\\");
   });
 
   el.versionSelect.addEventListener("change", () => {
-    if (!state.parsedIgmRecords || !state.parsedCgmaEntries) {
+    if (!state.cachedIgmRecords || !state.cachedCgmaEntries) {
       return;
     }
     const selectedVersion = el.versionSelect.value || "latest";
@@ -1182,8 +1272,10 @@ async function main() {
   bindUi();
   await restoreHandles(false);
   state.initialized = true;
+  updateValidationStatus();
   debugLog.log(`App ready`, 'info');
-  setResultSummary("Ready. Open Settings and grant folder access to run comparison.");
+  setResultSummary("Waiting for folder access...");
+  autoOpenSettingsIfFirstVisit();
 }
 
 main().catch((err) => {
