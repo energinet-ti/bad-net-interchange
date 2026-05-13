@@ -742,13 +742,13 @@ function updateSelectionInfo(selectedVersion, outputRows) {
 }
 
 function applySelectedVersion(selectedVersion) {
-  if (!state.parsedIgmRecords || !state.parsedCgmaEntries) {
+  if (!state.cachedIgmRecords || !state.cachedCgmaEntries) {
     return;
   }
 
   const output = compare_records(
-    state.parsedIgmRecords,
-    state.parsedCgmaEntries,
+    state.cachedIgmRecords,
+    state.cachedCgmaEntries,
     selectedVersion,
     50,
     200,
