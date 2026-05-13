@@ -691,7 +691,8 @@ async function scanSources() {
 
   const versionSet = new Set();
   for (const f of igm.files) {
-    const parsed = parseSshFilename(f.name);
+    const fileName = f.handle?.name || f.name;
+    const parsed = parseSshFilename(fileName);
     if (parsed) {
       versionSet.add(parsed.version);
     }
