@@ -72,8 +72,41 @@ fn truncate_hour(ts: &str) -> Option<String> {
     Some(format!("{}:00Z", &ts[..13]))
 }
 
-fn version_rank(version: &str) -> i32 {
-    version.parse::<i32>().unwrap_or(0)
+fn version_parts(version: &str) -> Vec<i32> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+
+    for ch in version.chars() {
+        if ch.is_ascii_digit() {
+            current.push(ch);
+        } else if !current.is_empty() {
+            parts.push(current.parse::<i32>().unwrap_or(0));
+            current.clear();
+        }
+    }
+
+    if !current.is_empty() {
+        parts.push(current.parse::<i32>().unwrap_or(0));
+    }
+
+    parts
+}
+
+fn compare_versions(left: &str, right: &str) -> std::cmp::Ordering {
+    let left_parts = version_parts(left);
+    let right_parts = version_parts(right);
+
+    for (left_part, right_part) in left_parts.iter().zip(right_parts.iter()) {
+        match left_part.cmp(right_part) {
+            std::cmp::Ordering::Equal => continue,
+            other => return other,
+        }
+    }
+
+    match left_parts.len().cmp(&right_parts.len()) {
+        std::cmp::Ordering::Equal => left.cmp(right),
+        other => other,
+    }
 }
 
 fn area_from_igm_file(area_code: &str) -> &'static str {
@@ -92,7 +125,7 @@ pub fn setup_panic_hook() {
 #[wasm_bindgen]
 pub fn extract_igm_record(file_name: String, zip_bytes: &[u8]) -> Result<JsValue, JsValue> {
     let re = Regex::new(
-        r"(?P<timestamp>\d{8}T\d{4}Z)_2D_(?P<area>DKE|DKW)_SSH_(?P<version>\d{3})\.zip$",
+        r"(?P<timestamp>\d{8}T\d{4}Z)_2D_(?P<area>DKE|DKW)_SSH_(?P<version>[A-Za-z0-9-]+)\.zip$",
     )
     .map_err(|e| JsValue::from_str(&format!("Regex error: {e}")))?;
 
@@ -311,7 +344,9 @@ pub fn compare_records(
         let key = (rec.aligned_timestamp.clone(), rec.area.clone());
         match latest_map.get(&key) {
             Some(existing) if selected_version == "latest" => {
-                if version_rank(&rec.ssh_version) > version_rank(&existing.ssh_version) {
+                if compare_versions(&rec.ssh_version, &existing.ssh_version)
+                    == std::cmp::Ordering::Greater
+                {
                     latest_map.insert(key, rec);
                 }
             }

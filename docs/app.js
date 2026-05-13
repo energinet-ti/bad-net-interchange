@@ -10,6 +10,8 @@ const DB_VERSION = 1;
 const STORE_NAME = "handles";
 const DEBUG_STORAGE_KEY = "cgma-igm-debug-enabled";
 const FIRST_VISIT_KEY = "cgma-igm-first-visit";
+const OFFLINE_ROOT_PATH = "\\\\fs61\\driftdata\\Drift\\Arkiv\\CGMES\\OFFLINE\\";
+const CGMA_ROOT_PATH = "\\\\fs61\\BizTalkFileShare\\BTS2010\\Common\\Tracking\\CGMA_TSO\\";
 
 const el = {
   settingsButton: document.getElementById("settingsButton"),
@@ -29,6 +31,9 @@ const el = {
   refreshButton: document.getElementById("refreshButton"),
   versionSelect: document.getElementById("versionSelect"),
   selectionInfo: document.getElementById("selectionInfo"),
+  filesInfoButton: document.getElementById("filesInfoButton"),
+  filesInfoPanel: document.getElementById("filesInfoPanel"),
+  filesUsedContent: document.getElementById("filesUsedContent"),
   resultSummary: document.getElementById("resultSummary"),
   tabsContainer: document.getElementById("tabsContainer"),
   diffTab: document.getElementById("diffTab"),
@@ -62,6 +67,7 @@ const state = {
   versionCreatedMap: {},
   latestIgmDateLabel: "",
   latestCgmaPathLabel: "",
+  latestCgmaFullPath: "",
   comparisonData: null,
   sortColumn: "aligned_timestamp",
   sortAscending: true,
@@ -121,6 +127,13 @@ function toYmd(date, zeroPad) {
     return { y: String(y), m: String(m).padStart(2, "0"), d: String(d).padStart(2, "0") };
   }
   return { y: String(y), m: String(m), d: String(d) };
+}
+
+function buildFullPath(rootPath, relativePath) {
+  const normalized = String(relativePath || "")
+    .replaceAll("/", "\\")
+    .replace(/^\\+/, "");
+  return normalized ? `${rootPath}${normalized}` : rootPath;
 }
 
 async function openDb() {
@@ -314,12 +327,18 @@ function setProgress(message, fraction) {
 }
 
 function versionRank(version) {
-  const n = Number.parseInt(version, 10);
-  return Number.isFinite(n) ? n : 0;
+  return String(version || "");
+}
+
+function compareVersions(leftVersion, rightVersion) {
+  return versionRank(leftVersion).localeCompare(versionRank(rightVersion), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
 }
 
 function fillVersionSelect(versions) {
-  const sorted = [...versions].sort((a, b) => versionRank(a) - versionRank(b));
+  const sorted = [...versions].sort(compareVersions);
   el.versionSelect.innerHTML = "";
 
   const latestOption = document.createElement("option");
@@ -337,9 +356,103 @@ function fillVersionSelect(versions) {
   el.versionSelect.value = "latest";
 }
 
+function parseSshFilename(fileName) {
+  const match = fileName.match(
+    /^(?<timestamp>\d{8}T\d{4}Z)_2D_(?<area>DKE|DKW)_SSH_(?<version>[A-Za-z0-9-]+)\.zip$/,
+  );
+
+  if (!match || !match.groups) {
+    return null;
+  }
+
+  const { area, version } = match.groups;
+
+  return {
+    area,
+    version,
+  };
+}
+
+function buildFilesUsedText(selectedVersion, outputRows) {
+  const matchedKeys = new Set(
+    (outputRows || []).map(
+      (row) => `${row.aligned_timestamp}|${row.area}|${row.ssh_version}|${row.ssh_file}`,
+    ),
+  );
+
+  const candidateRecords = [];
+  const latestByKey = new Map();
+  for (const record of state.cachedIgmRecords || []) {
+    if (selectedVersion !== "latest" && record.ssh_version !== selectedVersion) {
+      continue;
+    }
+
+    if (selectedVersion === "latest") {
+      const key = `${record.aligned_timestamp}|${record.area}`;
+      const existing = latestByKey.get(key);
+      if (!existing || compareVersions(record.ssh_version, existing.ssh_version) > 0) {
+        latestByKey.set(key, record);
+      }
+      continue;
+    }
+
+    candidateRecords.push(record);
+  }
+
+  const fallbackRecords = selectedVersion === "latest"
+    ? [...latestByKey.values()]
+    : candidateRecords;
+
+  const usedPaths = new Set();
+  for (const record of state.cachedIgmRecords || []) {
+    const key = `${record.aligned_timestamp}|${record.area}|${record.ssh_version}|${record.ssh_file}`;
+    if (matchedKeys.has(key) && record.ssh_full_path) {
+      usedPaths.add(record.ssh_full_path);
+    }
+  }
+
+  if (usedPaths.size === 0) {
+    for (const record of fallbackRecords) {
+      if (record.ssh_full_path) {
+        usedPaths.add(record.ssh_full_path);
+      }
+    }
+  }
+
+  const igmPaths = [...usedPaths].sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+  const lines = [
+    `Selected version: ${selectedVersion}`,
+    "",
+    "CGMA:",
+    state.latestCgmaFullPath || "n/a",
+    "",
+    `IGM (${igmPaths.length}):`,
+  ];
+
+  if (igmPaths.length === 0) {
+    lines.push("n/a");
+  } else {
+    lines.push(...igmPaths);
+  }
+
+  return lines.join("\n");
+}
+
+function updateFilesUsedPanel(selectedVersion, outputRows) {
+  if (!el.filesUsedContent) {
+    return;
+  }
+  el.filesUsedContent.textContent = buildFilesUsedText(selectedVersion, outputRows);
+}
+
+function hideFilesInfoPanel() {
+  if (el.filesInfoPanel) {
+    el.filesInfoPanel.classList.add("hidden");
+  }
+}
+
 async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
   lookbackDays = Math.min(lookbackDays, 1);
-  const pattern = /^\d{8}T\d{4}Z_2D_(DKE|DKW)_SSH_\d{3}\.zip$/;
   let allMatches = [];
   let latestDateLabel = null;
 
@@ -414,9 +527,13 @@ async function findLatestIgmFolder(offlineRootHandle, lookbackDays = 1) {
           continue;
         }
 
-        const isUseful = pattern.test(entry.name);
+        const isUseful = Boolean(parseSshFilename(entry.name));
         if (isUseful) {
-          dateMatches.push(entry);
+          dateMatches.push({
+            handle: entry,
+            pathLabel: `${y}/${m}/${d}/${entry.name}`,
+            fullPath: buildFullPath(OFFLINE_ROOT_PATH, `${y}/${m}/${d}/${entry.name}`),
+          });
           if (usefulLogged < 30) {
             debugLog.log(`[IGM Discovery] Useful file: ${entry.name}`, 'success');
             usefulLogged += 1;
@@ -531,6 +648,7 @@ async function findLatestCgmaXml(cgmaRootHandle, lookbackDays = 1) {
           candidates.push({
             handle: entry,
             pathLabel: `${y}/${m}/${d}/${guidDir.name}/${entry.name}`,
+            fullPath: buildFullPath(CGMA_ROOT_PATH, `${y}/${m}/${d}/${guidDir.name}/${entry.name}`),
             modified: file.lastModified,
           });
           debugLog.log(`[CGMA Discovery]     Found: ${entry.name} (modified: ${new Date(file.lastModified).toISOString()})`, 'info');
@@ -572,11 +690,10 @@ async function scanSources() {
   state.latestCgmaPathLabel = cgma.best.pathLabel;
 
   const versionSet = new Set();
-  const versionPattern = /^\d{8}T\d{4}Z_2D_(DKE|DKW)_SSH_(\d{3})\.zip$/;
   for (const f of igm.files) {
-    const m = f.name.match(versionPattern);
-    if (m) {
-      versionSet.add(m[2]);
+    const parsed = parseSshFilename(f.name);
+    if (parsed) {
+      versionSet.add(parsed.version);
     }
   }
 
@@ -615,7 +732,7 @@ function updateSelectionInfo(selectedVersion, outputRows) {
   const createdLabel =
     selectedVersion === "latest"
       ? "n/a (latest mode can mix versions)"
-      : (state.versionCreatedByVersion[selectedVersion] || "n/a");
+      : (state.versionCreatedMap[selectedVersion] || "n/a");
 
   const timeslotCount = countUniqueTimeslots(outputRows || []);
   el.selectionInfo.textContent =
@@ -638,6 +755,7 @@ function applySelectedVersion(selectedVersion) {
 
   renderRows(output.rows);
   updateSelectionInfo(selectedVersion, output.rows);
+  updateFilesUsedPanel(selectedVersion, output.rows);
   setResultSummary(
     `Matched rows: ${output.matched_rows} | Versions discovered: ${output.discovered_versions.join(", ") || "n/a"} | Version mode: ${selectedVersion}`
   );
@@ -929,11 +1047,12 @@ async function runComparison() {
   const totalIgm = state.discoveredIgmFiles.length || 1;
   debugLog.log(`Parsing ${state.discoveredIgmFiles.length} IGM files...`, 'info');
   for (let i = 0; i < state.discoveredIgmFiles.length; i += 1) {
-    const fileHandle = state.discoveredIgmFiles[i];
-    const file = await fileHandle.getFile();
+    const fileItem = state.discoveredIgmFiles[i];
+    const file = await fileItem.handle.getFile();
     const bytes = new Uint8Array(await file.arrayBuffer());
     try {
       const record = extract_igm_record(file.name, bytes);
+      record.ssh_full_path = fileItem.fullPath;
       igmRecords.push(record);
       debugLog.log(`✓ Parsed IGM: ${file.name}`, 'info');
     } catch (err) {
@@ -990,6 +1109,7 @@ async function runComparison() {
 
   state.latestCgmaFileHandle = selectedCandidate.handle;
   state.latestCgmaPathLabel = selectedCandidate.pathLabel;
+  state.latestCgmaFullPath = selectedCandidate.fullPath || buildFullPath(CGMA_ROOT_PATH, selectedCandidate.pathLabel);
   debugLog.log(`[CGMA Selection] Using file: ${selectedCandidate.pathLabel} (overlap=${bestOverlap})`, 'info');
   if (selectedCandidate.pathLabel !== cgmaCandidates[0].pathLabel) {
     debugLog.log(`[CGMA Selection] Newest CGMA had lower overlap. Fell back to an older file for matching.`, 'warn');
@@ -1017,6 +1137,7 @@ async function runComparison() {
   setProgress("Rendering tables...", 0.98);
   renderRows(output.rows);
   updateSelectionInfo(selectedVersion, output.rows);
+  updateFilesUsedPanel(selectedVersion, output.rows);
   setResultSummary(
     `Matched rows: ${output.matched_rows} | Versions discovered: ${output.discovered_versions.join(", ") || "n/a"
     } | Version mode: ${selectedVersion}`
@@ -1229,6 +1350,25 @@ function bindUi() {
     });
   }
 
+  if (el.filesInfoButton && el.filesInfoPanel) {
+    el.filesInfoButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      el.filesInfoPanel.classList.toggle("hidden");
+    });
+
+    el.filesInfoPanel.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!el.filesInfoPanel.classList.contains("hidden") &&
+          !el.filesInfoButton.contains(event.target) &&
+          !el.filesInfoPanel.contains(event.target)) {
+        hideFilesInfoPanel();
+      }
+    });
+  }
+
   el.debugEnabledCheckbox.addEventListener("change", (event) => {
     saveDebugSetting(event.target.checked);
     setResultSummary(state.debugEnabled ? "Debug logging enabled (browser console)." : "Debug logging disabled.");
@@ -1369,6 +1509,7 @@ async function main() {
   updateValidationStatus();
   debugLog.log(`App ready`, 'info');
   setResultSummary("Waiting for folder access...");
+  updateFilesUsedPanel("latest", []);
   autoOpenSettingsIfFirstVisit();
 }
 

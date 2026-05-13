@@ -48,6 +48,15 @@
           </div>
           <div class="output-toolbar">
             <div id="selectionInfo" class="small"></div>
+            <div class="files-info-anchor">
+              <button id="filesInfoButton" class="btn-icon btn-icon-inline" aria-label="Show files used" title="Show files used">
+                <span class="info-icon">?</span>
+              </button>
+              <div id="filesInfoPanel" class="files-popover hidden" role="dialog" aria-label="Files used for comparison">
+                <div class="files-popover-title">Files Used</div>
+                <pre id="filesUsedContent" class="files-popover-content mono">No files loaded yet.</pre>
+              </div>
+            </div>
             <div class="field-row compact-row">
               <label for="versionSelect">Version:</label>
               <select id="versionSelect"></select>
